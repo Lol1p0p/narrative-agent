@@ -1,0 +1,11 @@
+{
+    "display_name": "Narrative Agent",
+    "id": "narrative-agent",
+    "api": 2,
+    "version": "0.2.0",
+    "description": "多Agent叙事系统v0.2.0：规划/工具执行/写作/合并分析",
+    "author": "Lol1p0p",
+    "tags": ["agent", "narrative", "pipeline"],
+    "js": "index.js",
+    "css": "style.css"
+}

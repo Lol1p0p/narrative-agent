@@ -1,0 +1,59 @@
+<div id="narrative_agent_settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Narrative Agent</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <label class="checkbox_label">
+                <input type="checkbox" id="na_enabled" name="na_enabled">
+                <span>启用多Agent叙事系统</span>
+            </label>
+            <small>启用后，消息发送将经过多Agent流水线（规划 → 工具执行 → 写作 → 合并分析）处理。</small>
+
+            <hr>
+
+            <h4>预设处理模式</h4>
+            <div class="flex-container">
+                <label>模式:</label>
+                <select id="na_preset_mode" style="width: 200px;">
+                    <option value="none">无（原版插件行为）</option>
+                    <option value="split">分割注入（系统提示→规划Agent，用户提示→写作Agent）</option>
+                    <option value="adapted" disabled>适配注入（开发中）</option>
+                </select>
+            </div>
+            <small>选择如何处理酒馆预设中的提示词。分割注入模式会将系统提示注入规划Agent、用户提示注入写作Agent。</small>
+
+            <hr>
+
+            <h4>世界书来源</h4>
+            <div class="flex-container">
+                <label>来源:</label>
+                <select id="na_worldbook_source" style="width: 200px;">
+                    <option value="auto">自动（优先卡包内嵌，回退到世界书库）</option>
+                    <option value="card">卡包内嵌（character_book）</option>
+                    <option value="world">世界书库（按名称加载）</option>
+                </select>
+            </div>
+            <small>选择世界书条目的加载来源。卡包内嵌模式适用于已通过 narrative-agent-worldbook skill 规范化并嵌入卡包的世界书。</small>
+
+            <hr>
+
+            <h4>并行处理</h4>
+            <label class="checkbox_label">
+                <input type="checkbox" id="na_parallel_execution" name="na_parallel_execution">
+                <span>启用并行处理</span>
+            </label>
+            <small>开启后，不依赖合并分析结果的 post_pipeline 工具将与分析 Agent 并行调用，可缩短 Pipeline 整体耗时约 30-40%。依赖 story_summary / state_summary / known_context 的工具仍会在合并分析之后串行执行。</small>
+
+            <hr>
+
+            <div style="margin-top: 8px;">
+                <input type="button" class="menu_button" id="na_reset_state" value="重置状态">
+                <input type="button" class="menu_button" id="na_refresh_state" value="刷新显示">
+                <input type="button" class="menu_button" id="na_export_data" value="导出数据">
+                <input type="button" class="menu_button" id="na_import_data" value="导入数据">
+            </div>
+        </div>
+    </div>
+</div>
