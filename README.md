@@ -91,7 +91,7 @@ GENERATION_ENDED — 执行完整 Pipeline
   │   ※ code 工具：代码层确定性执行，不调用 LLM
   │   ※ llm 工具（trigger=planning）：调用 LLM，结果传递给写作 agent 但不显示给用户
   │
-  ├─ Agent 2: 写作 (Writing) ───────→ 叙事正文 (200-400字)
+  ├─ Agent 2: 写作 (Writing) ───────→ 叙事正文
   │   system: {writingSystemPreset} + {systemEntries} + WRITING_SUFFIX
   │   user:   {writingUserPreset} + 用户角色 + 最近叙事片段 + {selectiveEntries} + 写作指导 + [工具结果] + 用户输入
   │   ※ system 与规划 agent 共享 systemEntries
