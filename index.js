@@ -1653,6 +1653,8 @@ async function runMergedWritingAgent(ctx) {
 
   userContent += `\n\n<user_input>\n${ctx.userInput}\n</user_input>`;
 
+  userContent += `\n\n【思维模式要求】在你的思考过程（ thinking标签内）中，请遵守以下规则：\n1. 禁止使用圆括号包裹内心独白，例如"（心想：……）"或"(内心OS：……)"，所有分析内容直接陈述即可\n2. 禁止以角色第一人称描写内心活动，例如"我心想""我觉得""我暗自"等，请用分析性语言替代\n3. 思考内容应聚焦于剧情走向分析和回复内容规划，不要在思考中进行角色扮演式的内心戏表演`;
+
   const messages = [
     { role: "system", content: systemContent },
     { role: "user", content: userContent },
@@ -1725,9 +1727,18 @@ const MERGED_ANALYSIS_SYSTEM = `${SHARED_ANALYSIS_PREFIX}
 
 async function runMergedAnalysisAgent(ctx) {
   const turnLabel = ctx.turnId ? `第${parseInt(String(ctx.turnId).replace("turn_", ""), 10)}轮` : "本轮";
+
+  let userContent = `<story_summary>\n${ctx.oldSummary}\n</story_summary>`;
+  userContent += `\n\n<state_summary>\n${ctx.currentStateSummary}\n</state_summary>`;
+  if (ctx.openingNarrative) {
+    userContent += `\n\n<opening_narrative>\n${ctx.openingNarrative}\n</opening_narrative>`;
+  }
+  userContent += `\n\n<narrative_text>\n${ctx.currentDialogue}\n</narrative_text>`;
+  userContent += "\n\n请提取事件并生成摘要。";
+
   const messages = [
     { role: "system", content: MERGED_ANALYSIS_SYSTEM },
-    { role: "user", content: `<story_summary>\n${ctx.oldSummary}\n</story_summary>\n\n<state_summary>\n${ctx.currentStateSummary}\n</state_summary>\n\n<narrative_text>\n${ctx.currentDialogue}\n</narrative_text>\n\n请提取事件并生成摘要。` },
+    { role: "user", content: userContent },
   ];
 
   const raw = await callLLM(messages, { label: "merged_analysis" });
@@ -1965,12 +1976,13 @@ class ContextRouter {
     };
   }
 
-  buildMergedAnalysisContext(narrativeText, userInput, turnId, stateSummary) {
+  buildMergedAnalysisContext(narrativeText, userInput, turnId, stateSummary, openingNarrative = "") {
     return {
       currentStateSummary: stateSummary || this.stateManager.getSummary(),
       oldSummary: this.summaryStore.getCurrentSummary(),
       currentDialogue: `用户：${userInput}\n叙事：${narrativeText}`,
       turnId,
+      openingNarrative: openingNarrative || "",
     };
   }
 }
@@ -1993,12 +2005,23 @@ class Orchestrator {
     this._isRunning = false;
     this.presetContext = null;
     this.turnHistory = [];
+    this._progressCb = null;
     this.contextRouter = new ContextRouter(deps);
     this.toolExecutor = new ToolExecutor();
   }
 
   setPresetContext(ctx) {
     this.presetContext = ctx;
+  }
+
+  onProgress(cb) {
+    this._progressCb = cb;
+  }
+
+  _reportProgress(status) {
+    if (typeof this._progressCb === "function") {
+      try { this._progressCb(status); } catch (e) { /* ignore */ }
+    }
   }
 
   async pipeline(userInput, isRegeneration = false) {
@@ -2026,6 +2049,7 @@ class Orchestrator {
       return result;
     } catch (error) {
       console.error("[NarrativeAgent] Pipeline error:", error);
+      this._reportProgress("API请求超时或被打断，工作流意外终止！");
       if (this.turnHistory.length > historyLenBefore) {
         console.warn("[NarrativeAgent] Rolling back turnHistory from failed pipeline (length:", this.turnHistory.length, "->", historyLenBefore, ")");
         this.turnHistory = this.turnHistory.slice(0, historyLenBefore);
@@ -2069,6 +2093,7 @@ class Orchestrator {
 
     // 1. Planning
     console.log("[NarrativeAgent] Phase 1: Planning");
+    this._reportProgress("正在生成写作指导...");
     const recentTurns = this._getStableRecentTurns(cfg.recentTurnsForPlanning, cfg.planningGrowthMargin || 3);
 
     const systemEntries = await this.worldInfoResolver.getConstantSystemEntries();
@@ -2094,6 +2119,7 @@ class Orchestrator {
     let toolResultsText = "";
     if (writingGuide.tool_calls && writingGuide.tool_calls.length > 0) {
       console.log("[NarrativeAgent] Phase 1.5: Tool Execution, count:", writingGuide.tool_calls.length);
+      this._reportProgress("正在调用工具...");
 
       const availableContext = await this._buildAvailableContext(sharedWorld, userInput, writingGuide);
 
@@ -2132,6 +2158,7 @@ class Orchestrator {
 
     // 2. Writing
     console.log("[NarrativeAgent] Phase 2: Writing");
+    this._reportProgress("正在创作故事...");
     const recentNarratives = this._getStableRecentTurns(cfg.recentTurnsForWriting, cfg.writingGrowthMargin || 4);
 
     const writingSystemPreset = (typeof this.presetContext === 'object')
@@ -2153,7 +2180,17 @@ class Orchestrator {
 
     this.turnHistory.push({ userInput, narrativeText });
 
+    let openingNarrative = "";
+    if (this.turnCounter === 0) {
+      const stCtx = getSTContext();
+      openingNarrative = this._extractContextContent(stCtx?.chat);
+      if (openingNarrative) {
+        console.log("[NarrativeAgent] 首轮开场白已提取, 长度:", openingNarrative.length);
+      }
+    }
+
     // 3. Merged Analysis (extraction + compression) + Post-pipeline tools
+    this._reportProgress("正在总结整理...");
     const { independent, dependent } = this._classifyPostPipelineTools(postPipelineTools);
     let merged;
     let applicationResult;
@@ -2166,7 +2203,7 @@ class Orchestrator {
       const [analysisResult] = await Promise.all([
         (async () => {
           const stateSummary = await this._getStateSummary();
-          const ctx = this.contextRouter.buildMergedAnalysisContext(narrativeText, userInput, turnId, stateSummary);
+          const ctx = this.contextRouter.buildMergedAnalysisContext(narrativeText, userInput, turnId, stateSummary, openingNarrative);
           try {
             return await runMergedAnalysisAgent(ctx);
           } catch (e) {
@@ -2194,7 +2231,7 @@ class Orchestrator {
     } else {
       console.log("[NarrativeAgent] Phase 3: Merged Analysis (serial)");
       const stateSummary = await this._getStateSummary();
-      const analysisCtx = this.contextRouter.buildMergedAnalysisContext(narrativeText, userInput, turnId, stateSummary);
+      const analysisCtx = this.contextRouter.buildMergedAnalysisContext(narrativeText, userInput, turnId, stateSummary, openingNarrative);
       try {
         merged = await runMergedAnalysisAgent(analysisCtx);
       } catch (e) {
@@ -2487,7 +2524,12 @@ class Orchestrator {
 
       this.turnHistory.push({ userInput, narrativeText });
 
-      const analysisCtx = this.contextRouter.buildMergedAnalysisContext(narrativeText, userInput, turnId);
+      let openingNarrative = "";
+      if (this.turnCounter === 0) {
+        const stCtx = getSTContext();
+        openingNarrative = this._extractContextContent(stCtx?.chat);
+      }
+      const analysisCtx = this.contextRouter.buildMergedAnalysisContext(narrativeText, userInput, turnId, openingNarrative);
       const merged = await runMergedAnalysisAgent(analysisCtx);
       const applicationResult = this.stateManager.applyEvents(merged.events);
 
@@ -2536,6 +2578,7 @@ class Orchestrator {
     const postPipelineTools = allTools.filter(t => t.trigger === "post_pipeline");
 
     console.log("[NarrativeAgent] Phase 1+2: Merged Writing (合并模式)");
+    this._reportProgress("正在创作故事...");
 
     const systemEntries = await this.worldInfoResolver.getConstantSystemEntries();
     const beforeCharEntries = await this.worldInfoResolver.getConstantBeforeCharEntries();
@@ -2575,8 +2618,18 @@ class Orchestrator {
     await this.fileManager.save(turnId, "plans", mergedGuide);
     this.turnHistory.push({ userInput, narrativeText });
 
+    let openingNarrative = "";
+    if (this.turnCounter === 0) {
+      const stCtx = getSTContext();
+      openingNarrative = this._extractContextContent(stCtx?.chat);
+      if (openingNarrative) {
+        console.log("[NarrativeAgent] 首轮开场白已提取, 长度:", openingNarrative.length);
+      }
+    }
+
     console.log("[NarrativeAgent] Phase 3: Merged Analysis");
-    const analysisCtx = this.contextRouter.buildMergedAnalysisContext(narrativeText, userInput, turnId, stateSummary);
+    this._reportProgress("正在总结整理...");
+    const analysisCtx = this.contextRouter.buildMergedAnalysisContext(narrativeText, userInput, turnId, stateSummary, openingNarrative);
     let merged;
     try {
       merged = await runMergedAnalysisAgent(analysisCtx);
@@ -2648,6 +2701,25 @@ class Orchestrator {
       globalIdx++;
     }
     return window;
+  }
+
+  _extractContextContent(chat) {
+    if (!chat || chat.length === 0) return "";
+    const parts = [];
+    for (const msg of chat) {
+      if (!msg || msg.is_user) continue;
+      const text = msg.mes || "";
+      const contextRegex = /<context>([\s\S]*?)<\/context>/g;
+      let match;
+      while ((match = contextRegex.exec(text)) !== null) {
+        let inner = match[1];
+        inner = inner.replace(/<[a-zA-Z_][^>]*>[\s\S]*?<\/[a-zA-Z_][^>]*>/g, "");
+        inner = inner.replace(/<[a-zA-Z_][^>]*\/>/g, "");
+        inner = inner.replace(/\n{3,}/g, "\n\n").trim();
+        if (inner) parts.push(inner);
+      }
+    }
+    return parts.join("\n\n");
   }
 
   async _rollbackToCheckpoint(turnId) {
@@ -2858,6 +2930,16 @@ class SillyTavernBridge {
       }
       this._savedUserInput = null;
       console.log("[NarrativeAgent] Pipeline start, userInput preview:", userInput?.substring(0, 60), "isRegeneration:", isRegeneration);
+
+      const lastMsgIndex = chat.length - 1;
+      this.orchestrator.onProgress((status) => {
+        const msg = chat[lastMsgIndex];
+        if (msg && !msg.is_user) {
+          msg.mes = status;
+          try { ctx.updateMessageBlock(lastMsgIndex, msg); } catch (e) { /* ignore */ }
+        }
+      });
+
       const result = await this.orchestrator.pipeline(userInput, isRegeneration);
 
       if (lastMsg && !lastMsg.is_user) {
@@ -2877,7 +2959,7 @@ class SillyTavernBridge {
       }
     } catch (err) {
       console.error("[NarrativeAgent] Pipeline 执行失败:", err);
-      if (lastMsg) { lastMsg.mes = "[多Agent叙事系统执行出错，请检查控制台日志。]"; ctx.updateMessageBlock(chat.length - 1, lastMsg); }
+      if (lastMsg) { lastMsg.mes = "API请求超时或被打断，工作流意外终止！"; ctx.updateMessageBlock(chat.length - 1, lastMsg); }
     } finally {
       this.isPipelineRunning = false;
     }
