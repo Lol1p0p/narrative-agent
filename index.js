@@ -124,10 +124,20 @@ function _isEntryExcluded(content, formattingSet) {
 }
 
 function _isToolEntryContent(content) {
-  if (!content.startsWith("{")) return false;
-  const hasType = content.includes('"type":"llm"') || content.includes('"type":"code"');
-  const hasFunction = content.includes('"function":');
-  return hasType && hasFunction;
+  if (!content || typeof content !== "string") return false;
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("{")) return false;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+    const validTypes = ["llm", "code"];
+    return validTypes.includes(parsed.type)
+      && parsed.function
+      && typeof parsed.function === "object"
+      && typeof parsed.function.name === "string";
+  } catch {
+    return false;
+  }
 }
 
 function parseTextToVariables(text) {
@@ -1507,7 +1517,10 @@ async function runPlanningAgent(ctx) {
   if (ctx.userPersona) {
     userContent += `\n\n<user_persona>\n${ctx.userPersona}\n</user_persona>`;
   }
-  userContent += `\n\n<recent_turns>\n${recentText}\n</recent_turns>`;
+  if (ctx.openingNarrative) {
+    userContent += `\n\n<opening_narrative>\n${ctx.openingNarrative}\n</opening_narrative>`;
+  }
+    userContent += `\n\n<recent_turns>\n${recentText}\n</recent_turns>`;
   if (ctx.selectiveEntries && ctx.selectiveEntries.length > 0) {
     userContent += "\n\n<worldinfo3>\n" + ctx.selectiveEntries.join("\n\n") + "\n</worldinfo3>";
   }
@@ -1569,10 +1582,14 @@ async function runWritingAgent(ctx) {
     userContent += `<user_persona>\n${ctx.userPersona}\n</user_persona>`;
   }
 
+  if (ctx.openingNarrative) {
+    userContent += `\n\n<opening_narrative>\n${ctx.openingNarrative}\n</opening_narrative>`;
+  }
+
   if (userContent) userContent += "\n\n";
   userContent += `<recent_turns>\n${recentText}\n</recent_turns>`;
 
-  if (ctx.selectiveEntries && ctx.selectiveEntries.length > 0) {
+    if (ctx.selectiveEntries && ctx.selectiveEntries.length > 0) {
     userContent += "\n\n<worldinfo3>\n" + ctx.selectiveEntries.join("\n\n") + "\n</worldinfo3>";
   }
 
@@ -1642,6 +1659,10 @@ async function runMergedWritingAgent(ctx) {
 
   if (userContent) userContent += "\n\n";
   userContent += `<story_summary>\n${ctx.storySummaries}\n</story_summary>`;
+
+  if (ctx.openingNarrative) {
+    userContent += `\n\n<opening_narrative>\n${ctx.openingNarrative}\n</opening_narrative>`;
+  }
 
   userContent += `\n\n<recent_turns>\n${recentText}\n</recent_turns>`;
 
@@ -2091,6 +2112,15 @@ class Orchestrator {
       return await this._mergedPipeline(userInput, turnId);
     }
 
+    let openingNarrative = "";
+    if (this.turnCounter === 0) {
+      const stCtx = getSTContext();
+      openingNarrative = this._extractContextContent(stCtx?.chat);
+      if (openingNarrative) {
+        console.log("[NarrativeAgent] 首轮开场白已提取, 长度:", openingNarrative.length);
+      }
+    }
+
     // 1. Planning
     console.log("[NarrativeAgent] Phase 1: Planning");
     this._reportProgress("正在生成写作指导...");
@@ -2110,6 +2140,7 @@ class Orchestrator {
       userInput, recentTurns, systemEntries, beforeCharEntries, selectiveEntries,
       stateSummary, this.presetContext, planningTools
     );
+    planningCtx.openingNarrative = openingNarrative;
     const writingGuide = await runPlanningAgent(planningCtx);
     await this.fileManager.save(turnId, "plans", writingGuide);
 
@@ -2175,19 +2206,11 @@ class Orchestrator {
       toolResultsText,
       beforeCharEntries
     );
+    writingCtx.openingNarrative = openingNarrative;
     const narrativeText = await runWritingAgent(writingCtx);
     await this.fileManager.save(turnId, "narratives", narrativeText);
 
     this.turnHistory.push({ userInput, narrativeText });
-
-    let openingNarrative = "";
-    if (this.turnCounter === 0) {
-      const stCtx = getSTContext();
-      openingNarrative = this._extractContextContent(stCtx?.chat);
-      if (openingNarrative) {
-        console.log("[NarrativeAgent] 首轮开场白已提取, 长度:", openingNarrative.length);
-      }
-    }
 
     // 3. Merged Analysis (extraction + compression) + Post-pipeline tools
     this._reportProgress("正在总结整理...");
@@ -2509,6 +2532,13 @@ class Orchestrator {
     try {
       const fallbackGuide = { narrative_direction: "", key_points: [], tone: "中", pacing: "中", continuity_notes: [], tool_calls: [] };
       const recentNarratives = this._getRecentTurns(3);
+
+      let openingNarrative = "";
+      if (this.turnCounter === 0) {
+        const stCtx = getSTContext();
+        openingNarrative = this._extractContextContent(stCtx?.chat);
+      }
+
       const writingCtx = {
         userPersona: this.userPersonaReader.getPersonaInfo(),
         writingGuide: fallbackGuide,
@@ -2519,16 +2549,12 @@ class Orchestrator {
         writingUserPreset: "",
         userInput,
         toolResultsText: "",
+        openingNarrative,
       };
       const narrativeText = await runWritingAgent(writingCtx);
 
       this.turnHistory.push({ userInput, narrativeText });
 
-      let openingNarrative = "";
-      if (this.turnCounter === 0) {
-        const stCtx = getSTContext();
-        openingNarrative = this._extractContextContent(stCtx?.chat);
-      }
       const analysisCtx = this.contextRouter.buildMergedAnalysisContext(narrativeText, userInput, turnId, openingNarrative);
       const merged = await runMergedAnalysisAgent(analysisCtx);
       const applicationResult = this.stateManager.applyEvents(merged.events);
@@ -2587,6 +2613,15 @@ class Orchestrator {
     const recentTurns = this._getStableRecentTurns(cfg.recentTurnsForWriting, cfg.writingGrowthMargin || 4);
     const stateSummary = await this._getStateSummary();
 
+    let openingNarrative = "";
+    if (this.turnCounter === 0) {
+      const stCtx = getSTContext();
+      openingNarrative = this._extractContextContent(stCtx?.chat);
+      if (openingNarrative) {
+        console.log("[NarrativeAgent] 首轮开场白已提取, 长度:", openingNarrative.length);
+      }
+    }
+
     const narrativeText = await runMergedWritingAgent({
       userInput,
       recentTurns,
@@ -2602,6 +2637,7 @@ class Orchestrator {
       writingUserPreset: (typeof this.presetContext === "object")
         ? (this.presetContext.writingUserContext || "")
         : "",
+      openingNarrative,
     });
 
     await this.fileManager.save(turnId, "narratives", narrativeText);
@@ -2617,15 +2653,6 @@ class Orchestrator {
     };
     await this.fileManager.save(turnId, "plans", mergedGuide);
     this.turnHistory.push({ userInput, narrativeText });
-
-    let openingNarrative = "";
-    if (this.turnCounter === 0) {
-      const stCtx = getSTContext();
-      openingNarrative = this._extractContextContent(stCtx?.chat);
-      if (openingNarrative) {
-        console.log("[NarrativeAgent] 首轮开场白已提取, 长度:", openingNarrative.length);
-      }
-    }
 
     console.log("[NarrativeAgent] Phase 3: Merged Analysis");
     this._reportProgress("正在总结整理...");
