@@ -32,7 +32,7 @@ SillyTavern 扩展，通过多个**上下文隔离**的 Agent 处理用户输入
 
 **核心特点**：
 
-- **上下文隔离**：每个 Agent 只看到完成任务所需的最小上下文，避免信息过载
+- **上下文隔离**：每个 Agent 只看到完成任务所需的最小上下文，减少噪声引入
 - **确定性状态管理**：LLM 只建议状态变更，代码层负责验证和写入，杜绝幻觉篡改
 - **工具系统**：世界书作者可通过 `[TOOL:name]` 条目定义 Planning 阶段工具和 Post-Pipeline 工具，无需修改插件代码。支持内置 `roll_dice` 与自定义 code 工具（通过 `code` 字段定义 JavaScript 计算逻辑）
 - **世界书条目分类注入**：条目根据位置（system / before\_char）和激活策略（永久 / 关键词）自动路由到对应 Agent 的正确 message 位置
@@ -50,12 +50,36 @@ SillyTavern 扩展，通过多个**上下文隔离**的 Agent 处理用户输入
 
 ```
 narrative-agent/
-├── index.js           # 主入口（含所有核心类与 Pipeline 逻辑）
-├── manifest.json      # 扩展清单
-├── settings.html      # 设置面板
-├── style.css          # 状态面板样式
-├── README.md          # 本文档
-└── TUTORIAL.md        # 世界书作者教程
+├── index.js              # 主入口，扩展初始化与设置面板注册
+├── manifest.json         # 扩展清单
+├── settings.html         # 设置面板 HTML
+├── style.css             # 状态面板样式
+│
+├── orchestator.js        # 核心编排器，完整 Pipeline 调度逻辑
+├── bridge.js             # SillyTavern 事件桥接（拦截/替换/输出）
+├── context-router.js     # 上下文路由层，为各 Agent 构造隔离 messages
+│
+├── agent-planning.js     # 规划 Agent，输出结构化写作指导
+├── agent-writing.js      # 写作 Agent + 合并写作 Agent
+├── agent-analysis.js     # 合并分析 Agent（事件提取 + 摘要压缩）
+│
+├── state.js              # StateManager（确定性游戏状态）+ SummaryStore（摘要存储）
+├── store.js              # FileManager，localStorage 持久化与对话文件管理
+├── readers.js            # CharacterReader（角色卡读取）+ UserPersonaReader（用户角色）
+├── worldbook.js          # WorldInfoResolver，世界书条目加载/分类/缓存
+│
+├── tools.js              # 工具执行引擎（code/llm/roll_dice 三类工具）
+├── dice.js               # 骰子引擎（普通/优势/劣势/爆炸四种模式）
+├── mvu.js                # MVU 变量框架状态摘要生成
+├── parser.js             # JSON 输出解析（规划/事件提取/合并分析）
+├── llm.js                # LLM 调用封装（重试/错误处理）
+│
+├── constants.js          # 全局常量、默认配置、系统 Prompt 模板
+├── utils.js              # 通用工具函数（ST 上下文获取/文本截断/预设拆分等）
+├── settings.js           # 配置加载/保存/对话状态持久化
+│
+├── README.md             # 本文档
+└── TUTORIAL.html         # 世界书作者教程
 ```
 
 ## 架构概览
@@ -115,17 +139,32 @@ GENERATION_ENDED — 执行完整 Pipeline
       finalOutput = narrative + post_pipeline 工具结果
 ```
 
+### 模块结构说明
+
+本扩展按功能划分为以下核心模块：
+
+- **桥接层**（bridge.js）：拦截 SillyTavern 的生成事件，替换默认流程并注入自定义输出。
+- **编排器**（orchestator.js）：协调 Pipeline 各阶段的执行顺序与数据流转。
+- **上下文路由**（context-router.js）：为规划、写作、分析等 Agent 构造隔离的 messages 数组。
+- **Agent 层**：
+  - agent-planning.js / agent-writing.js / agent-analysis.js：分别实现规划、写作与合并分析 Agent。
+  - 内置合并写作模式（agent-writing.js 中），无工具时自动融合规划与写作。
+- **状态管理**（state.js / store.js）：StateManager 负责确定性游戏状态，SummaryStore 管理压缩摘要，FileManager 负责持久化。
+- **世界书解析**（worldbook.js）：WorldInfoResolver 分类加载世界书条目并按规则注入各 Agent 上下文。
+- **工具系统**（tools.js / dice.js）：解析并执行 \[TOOL:\*] 定义的工具，支持 code、llm、roll\_dice 三类。
+- **辅助模块**（parser.js / llm.js / constants.js / utils.js / settings.js）：JSON 解析、LLM 调用封装、常量与默认配置、通用工具函数以及配置管理。
+
 ### LLM 调用次数
 
-| 阶段                   | 是否调 LLM | 说明                         |
-| -------------------- | ------- | -------------------------- |
-| 规划                   | 是       | 有工具时；无工具时与写作合并为单次调用 |
+| 阶段                   | 是否调 LLM | 说明                                |
+| -------------------- | ------- | --------------------------------- |
+| 规划                   | 是       | 有工具时；无工具时与写作合并为单次调用               |
 | Planning code 工具     | 否       | 代码层执行（内置 roll\_dice 或自定义 code 工具） |
-| Planning llm 工具      | 是       | 仅当有 trigger=planning 工具    |
-| 写作                   | 是       | 有工具时；无工具时与规划合并            |
-| 合并分析                 | 是       | 事件提取 + 压缩合并                |
-| Post-pipeline llm 工具 | 是       | 仅当有 trigger=post\_pipeline |
-| 合并写作（合并模式）           | 是       | 无工具时规划+写作二合一，单次 LLM 调用    |
+| Planning llm 工具      | 是       | 仅当有 trigger=planning 工具           |
+| 写作                   | 是       | 有工具时；无工具时与规划合并                    |
+| 合并分析                 | 是       | 事件提取 + 压缩合并                       |
+| Post-pipeline llm 工具 | 是       | 仅当有 trigger=post\_pipeline        |
+| 合并写作（合并模式）           | 是       | 无工具时规划+写作二合一，单次 LLM 调用            |
 
 默认 3 次 LLM 调用（有工具），无工具时自动切换合并输出模式降至 2 次。有工具时额外增加。启用并行处理后，不依赖分析结果的 post\_pipeline 工具与合并分析同时调用，可缩短整体耗时至约原来的 60-70%。
 
@@ -238,21 +277,21 @@ n 和 m 控制分段稳定前缀窗口：窗口从 n 轮开始生长，达到 n+
 | trigger         | 执行时机             | 结果可见性               |
 | --------------- | ---------------- | ------------------- |
 | `planning`      | 规划 Agent 之后、写作之前 | 仅传递给写作 Agent，用户不可见  |
-| `post_pipeline` | 写作 + 分析之后         | 拼接到 chat\[] 末尾，用户可见 |
+| `post_pipeline` | 写作 + 分析之后        | 拼接到 chat\[] 末尾，用户可见 |
 
 工具类型：
 
-| type   | 执行方式        | 说明                           |
-| ------ | ----------- | ---------------------------- |
+| type   | 执行方式        | 说明                                        |
+| ------ | ----------- | ----------------------------------------- |
 | `code` | 代码层确定性执行    | 内置 `roll_dice` 或自定义 JS 代码（通过 `code` 字段定义） |
-| `llm`  | 调用 LLM 生成内容 | 通过 name 区分用途，同名按 priority 排序 |
+| `llm`  | 调用 LLM 生成内容 | 通过 name 区分用途，同名按 priority 排序              |
 
 **自定义 code 工具**：在 JSON content 中提供 `code` 字段，内容为 JavaScript 函数体。代码接收两个变量：
 
-| 变量 | 说明 |
-|---|---|
-| `params` | 规划 Agent 传入的工具参数对象 |
-| `state` | 当前 MVU 状态快照 `{}`，可通过 `state.变量名` 访问状态值 |
+| 变量       | 说明                                     |
+| -------- | -------------------------------------- |
+| `params` | 规划 Agent 传入的工具参数对象                     |
+| `state`  | 当前 MVU 状态快照 `{}`，可通过 `state.变量名` 访问状态值 |
 
 通过 `return` 语句输出结果。注册前自动进行语法校验，运行时异常不会中断 Pipeline。
 
@@ -289,7 +328,7 @@ n 和 m 控制分段稳定前缀窗口：窗口从 n 轮开始生长，达到 n+
 | 规划    | 综合全局信息，输出结构化写作指导。检测到工具时额外输出 `tool_calls[]` | JSON (narrative\_direction, key\_points, tone, pacing, continuity\_notes, tool\_calls) |
 | 写作    | 根据写作指导和上下文生成叙事正文                           | 纯文本                                                                                    |
 | 合并分析  | 从叙事正文提取结构化事件 + 将本轮压缩为摘要条目（单次 LLM 调用完成两项任务） | JSON `{events: [...], summary_entries: [...]}`                                         |
-| 合并写作  | 无规划工具时自动启用，融合规划与写作职责，一次性输出叙事正文            | 纯文本（与写作 Agent 输出格式一致）|
+| 合并写作  | 无规划工具时自动启用，融合规划与写作职责，一次性输出叙事正文             | 纯文本（与写作 Agent 输出格式一致）                                                                  |
 
 ### 合并分析 Agent
 
@@ -338,9 +377,8 @@ GENERATION_ENDED
 1. **generateRaw 参数共享**：所有 Agent 共享 ST 全局 temperature/max\_tokens
 2. **部分并行**：默认串行执行；开启并行处理后独立 post\_pipeline 工具与合并分析并行，但规划→写作→分析的核心链路仍串行，Pipeline 执行期间阻塞用户交互
 3. **localStorage 持久化**：大量对话数据可能触及 quota 限制（\~5MB），已内置修剪机制
-4. **单文件入口**：所有核心代码内联到 index.js（\~2900行）
-5. **角色卡内容不参与推理**：角色设定应通过世界书条目提供
-6. **无流式输出**：Pipeline 在 GENERATION\_ENDED 后执行，无法逐字流式显示
-7. **世界书格式依赖 UI 配置**：条目分类依赖世界书作者在 SillyTavern UI 中正确设置位置（position）和角色（role）
-8. **工具条目标识依赖 comment**：`[TOOL:xxx]` 类的条目通过 comment 前缀识别，若 comment 被意外清除，插件会通过 content 的 JSON 结构兜底检测；非 JSON 格式的格式条目（如 `[initvar]`、`[mvu_update]`）需要保持 comment 前缀完整
+4. **角色卡内容不参与推理**：角色设定应通过世界书条目提供
+5. **无流式输出**：Pipeline 在 GENERATION\_ENDED 后执行，无法逐字流式显示
+6. **世界书格式依赖 UI 配置**：条目分类依赖世界书作者在 SillyTavern UI 中正确设置位置（position）和角色（role）
+7. **工具条目标识依赖 comment**：`[TOOL:xxx]` 类的条目通过 comment 前缀识别，若 comment 被意外清除，插件会通过 content 的 JSON 结构兜底检测；非 JSON 格式的格式条目（如 `[initvar]`、`[mvu_update]`）需要保持 comment 前缀完整
 

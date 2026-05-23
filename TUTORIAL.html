@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Narrative Agent 世界书作者教程</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-sidebar: #0b0f14;
+    --text: #c9d1d9;
+    --text-secondary: #8b949e;
+    --text-heading: #f0f6fc;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent-dim: #1f6feb33;
+    --code-bg: #161b22;
+    --table-stripe: #1a2029;
+    --table-hover: #1e2530;
+    --inline-code: #d2a8ff;
+    --blockquote-border: #58a6ff;
+    --hr-color: #21262d;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 16px;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: 280px;
+    min-width: 280px;
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    overflow-y: auto;
+    padding: 24px 16px 40px;
+    z-index: 10;
+  }
+
+  #sidebar h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-heading);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--hr-color);
+  }
+
+  #sidebar nav a {
+    display: block;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 15px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+    margin-bottom: 1px;
+  }
+
+  #sidebar nav a:hover {
+    color: var(--text);
+    background: var(--accent-dim);
+  }
+
+  #sidebar nav a.active {
+    color: var(--accent);
+    background: var(--accent-dim);
+    font-weight: 500;
+  }
+
+  #sidebar nav a.sub {
+    padding-left: 24px;
+    font-size: 14px;
+  }
+
+  #sidebar .divider {
+    margin: 12px 0;
+    border-top: 1px solid var(--hr-color);
+  }
+
+  /* ── Main ── */
+  #main {
+    margin-left: 280px;
+    padding: 48px 200px 120px;
+    max-width: 1650px;
+    width: 100%;
+  }
+
+  h1 {
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--text-heading);
+    margin-bottom: 8px;
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--text-heading);
+    margin-top: 48px;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--hr-color);
+  }
+
+  h3 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-heading);
+    margin-top: 32px;
+    margin-bottom: 12px;
+  }
+
+  h4 {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text-heading);
+    margin-top: 24px;
+    margin-bottom: 8px;
+  }
+
+  p {
+    margin-bottom: 14px;
+  }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  a:hover { text-decoration: underline; }
+
+  strong { color: var(--text-heading); font-weight: 600; }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--hr-color);
+    margin: 32px 0;
+  }
+
+  /* ── Code ── */
+  code {
+    font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace;
+    font-size: 0.88em;
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--inline-code);
+  }
+
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    overflow-x: auto;
+    margin-bottom: 18px;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+    color: var(--text);
+  }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 18px;
+    font-size: 15px;
+  }
+
+  th {
+    text-align: left;
+    color: var(--text-heading);
+    font-weight: 600;
+    padding: 10px 14px;
+    border-bottom: 2px solid var(--border);
+    background: var(--bg-secondary);
+    font-size: 14px;
+  }
+
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--hr-color);
+    vertical-align: top;
+  }
+
+  tr:nth-child(even) td { background: var(--table-stripe); }
+
+  /* ── Blockquote / Callout ── */
+  blockquote {
+    border-left: 3px solid var(--accent);
+    margin: 16px 0;
+    padding: 10px 16px;
+    background: var(--bg-secondary);
+    border-radius: 0 6px 6px 0;
+    color: var(--text-secondary);
+  }
+
+  /* ── Lists ── */
+  ul, ol {
+    margin-bottom: 14px;
+    padding-left: 24px;
+  }
+  li { margin-bottom: 4px; }
+
+  /* ── Flow Diagram ── */
+  .flow {
+    margin: 20px 0 28px;
+  }
+
+  .flow-root {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 18px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--text-heading);
+    font-size: 15px;
+    position: relative;
+    max-width: 520px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .flow-root::after {
+    content: "";
+    display: block;
+    width: 2px;
+    height: 20px;
+    background: var(--border);
+    margin: 0 auto;
+  }
+
+  .flow-branches {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 4px;
+    max-width: 520px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .flow-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .flow-card-header {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace;
+    color: var(--text-heading);
+  }
+
+  .flow-card-body {
+    padding: 8px 14px 12px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  .flow-card-body code {
+    font-size: 0.9em;
+  }
+
+  .flow-card:nth-child(1) .flow-card-header { background: #1a3a5c; color: #58a6ff; }
+  .flow-card:nth-child(2) .flow-card-header { background: #1a3a5c; color: #58a6ff; }
+  .flow-card:nth-child(3) .flow-card-header { background: #1a3d1a; color: #3fb950; }
+  .flow-card:nth-child(4) .flow-card-header { background: #2a1a2e; color: #bc8cff; }
+
+  /* ── Scrollbars ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+  /* ── Responsive ── */
+  @media (max-width: 800px) {
+    #sidebar { display: none; }
+    #main { margin-left: 0; padding: 24px 20px 80px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ SIDEBAR ═══════════ -->
+<aside id="sidebar">
+  <h2>目录</h2>
+  <nav>
+    <a href="#1-快速开始">1. 快速开始</a>
+    <div class="divider"></div>
+    <a href="#2-条目分类与注入策略">2. 条目分类与注入策略</a>
+    <a class="sub" href="#21-ui-位置-注入目标">2.1 UI 位置 &amp; 注入目标</a>
+    <a class="sub" href="#22-激活策略">2.2 激活策略</a>
+    <a class="sub" href="#23-格式条目自动过滤">2.3 格式条目自动过滤</a>
+    <a class="sub" href="#24-注入流程总览">2.4 注入流程总览</a>
+    <div class="divider"></div>
+    <a href="#3-comment-前缀体系">3. Comment 前缀体系</a>
+    <a class="sub" href="#31-标准叙事前缀">3.1 标准叙事前缀</a>
+    <a class="sub" href="#32-工具前缀">3.2 工具前缀</a>
+    <a class="sub" href="#33-状态前缀">3.3 状态前缀</a>
+    <div class="divider"></div>
+    <a href="#4-工具定义-toolname">4. 工具定义 [TOOL:name]</a>
+    <a class="sub" href="#41-工具类型对比">4.1 工具类型对比</a>
+    <a class="sub" href="#42-trigger决定执行时机">4.2 Trigger</a>
+    <a class="sub" href="#43-code-工具格式">4.3 code 工具格式</a>
+    <a class="sub" href="#44-llm-工具格式">4.4 llm 工具格式</a>
+    <a class="sub" href="#45-规划-agent-如何调用工具">4.5 规划 Agent 调用</a>
+    <a class="sub" href="#46-llm-工具的-system_prompt-编写建议">4.6 system_prompt 建议</a>
+    <div class="divider"></div>
+    <a href="#5-mvu-变量管理">5. MVU 变量管理</a>
+    <a class="sub" href="#51-initvar-变量初始化">5.1 [initvar] 初始化</a>
+    <a class="sub" href="#52-mvu_update-变量更新规则">5.2 [mvu_update] 规则</a>
+    <div class="divider"></div>
+    <a href="#6-预设注入">6. 预设注入</a>
+    <div class="divider"></div>
+    <a href="#7-order-分组建议">7. Order 分组建议</a>
+    <div class="divider"></div>
+    <a href="#8-最佳实践">8. 最佳实践</a>
+    <a class="sub" href="#81-条目设计原则">8.1 条目设计</a>
+    <a class="sub" href="#82-工具设计原则">8.2 工具设计</a>
+    <a class="sub" href="#83-缓存优化">8.3 缓存优化</a>
+    <div class="divider"></div>
+    <a href="#9-常见问题">9. 常见问题</a>
+  </nav>
+</aside>
+
+<!-- ═══════════ MAIN CONTENT ═══════════ -->
+<main id="main">
+
+<h1>Narrative Agent 世界书作者教程</h1>
+<p style="color: var(--text-secondary); margin-bottom: 32px;">
+  本文档面向为 narrative-agent 插件编写或适配世界书条目的作者，涵盖条目分类机制、注入策略、前缀体系、工具定义以及常见注意事项。
+</p>
+
+<!-- ──────────────────────── 1 ──────────────────────── -->
+<h2 id="1-快速开始">1. 快速开始</h2>
+
+<p>世界书条目影响插件行为的两个层面：</p>
+<ol>
+  <li><strong>叙事注入</strong>：条目内容被注入到规划/写作 Agent 的 prompt 中，影响 LLM 的叙事决策</li>
+  <li><strong>工具定义</strong>：<code>[TOOL:name]</code> 前缀的条目在 Pipeline 中注册为自定义工具，trigger为<code>plan</code>的可由规划 Agent 调用，trigger为<code>post_pipeline</code>的默认在pipeline尾部调用，具体规则见<a href="#42-trigger决定执行时机">4.2 Trigger：决定执行时机</a></li>
+</ol>
+
+<p>一个条目的"身份"由两个因素决定：</p>
+<ul>
+  <li><strong>在哪个 UI 位置</strong>：决定了注入到 Agent 的 system 还是 user message</li>
+  <li><strong>如何激活</strong>：决定了是始终注入还是仅在关键词匹配时注入</li>
+</ul>
+
+<!-- ──────────────────────── 2 ──────────────────────── -->
+<h2 id="2-条目分类与注入策略">2. 条目分类与注入策略</h2>
+
+<h3 id="21-ui-位置-注入目标">2.1 UI 位置 &amp; 注入目标</h3>
+<p>在 SillyTavern 世界书条目的编辑界面中，有两个关键设置决定了条目的注入目标：</p>
+
+<table>
+  <thead>
+    <tr><th>UI 选择</th><th>对应 position</th><th>对应 role</th><th>注入到 Agent 的哪个 message</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>@D(system)</strong></td><td>4</td><td>0</td><td>规划 Agent <strong>system</strong> + 写作 Agent <strong>system</strong></td></tr>
+    <tr><td><strong>Char(before_char)</strong></td><td>0</td><td>任意</td><td>规划 Agent <strong>user</strong> + 写作 Agent <strong>user</strong></td></tr>
+  </tbody>
+</table>
+
+<p><strong>设计原则</strong>：</p>
+<ul>
+  <li>system 位置(@D)适合永久性的世界规则、设定、角色定义——这些内容在跨轮对话中不变，system message 可以命中 API prefix cache</li>
+  <li>user 位置(Char)适合叙事性设定、场景描述——这些内容每轮可能变化(比如随着故事进展新的地点、NPC 被引入)，放在 user message 中不破坏 system 的缓存稳定性</li>
+</ul>
+
+<h3 id="22-激活策略">2.2 激活策略</h3>
+
+<table>
+  <thead>
+    <tr><th>策略</th><th>世界书设置</th><th>行为</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>永久激活</strong></td><td>constant = true</td><td>始终注入。适合核心世界观规则、主角设定、永久生效的系统规则</td></tr>
+    <tr><td><strong>关键词激活</strong></td><td>constant = false</td><td>仅在条目关键词(key)匹配最近聊天文本时注入。适合场景描述、临时状态</td></tr>
+  </tbody>
+</table>
+
+<blockquote>
+  <strong>注意</strong>：向量化激活策略(vectorized)当前不被 narrative-agent 使用，仅支持永久和关键词两种策略。
+</blockquote>
+
+<h3 id="23-格式条目自动过滤">2.3 格式条目自动过滤</h3>
+<p>以下 comment 前缀的条目被视为"格式条目"(用于定义系统行为而非叙事注入)，会被自动从 Agent 上下文中过滤掉：</p>
+<ul>
+  <li><code>[TOOL:*]</code> — 工具定义</li>
+  <li><code>[UI]</code> — UI 模板</li>
+  <li><code>[initvar]</code> — MVU 变量初始化</li>
+  <li><code>[mvu_update]</code> — MVU 变量更新规则</li>
+</ul>
+
+<p>这意味着一个 <code>[TOOL:roll_dice]</code> 条目即使设置了 <code>constant=true</code>，其 JSON 定义内容也不会被注入到 Agent 的 prompt 中；只有工具的函数描述(<code>function.description</code>)会通过工具列表注入规划 Agent。</p>
+
+<p><strong>兜底保护</strong>：即使 comment 字段被意外清除，插件也会检查 content 是否为工具定义格式的 JSON（以 <code>{</code> 开头且包含 <code>"type":"llm"/"code"</code> 和 <code>"function":</code>），自动将其识别为工具条目并过滤。注意此兜底仅适用于 <code>[TOOL:*]</code> 类条目；<code>[initvar]</code> 和 <code>[mvu_update]</code> 条目的内容没有固定 JSON 格式指纹，仍需依赖 comment 前缀识别。</p>
+
+<h3 id="24-注入流程总览">2.4 注入流程总览</h3>
+
+<div class="flow">
+  <div class="flow-root">世界书条目</div>
+  <div class="flow-branches">
+    <div class="flow-card">
+      <div class="flow-card-header">constant=true, position=4, role=0</div>
+      <div class="flow-card-body">
+        <strong>getConstantSystemEntries()</strong><br>
+        注入：规划 Agent system + 写作 Agent system
+      </div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-card-header">constant=true, position=0</div>
+      <div class="flow-card-body">
+        <strong>getConstantBeforeCharEntries()</strong><br>
+        注入：规划 Agent user + 写作 Agent user
+      </div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-card-header">constant=false, 有 key</div>
+      <div class="flow-card-body">
+        <strong>getSelectiveActivatedEntries()</strong><br>
+        注入：规划 Agent user + 写作 Agent user（仅匹配时）
+      </div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-card-header">格式条目（[TOOL:*] 等）</div>
+      <div class="flow-card-body">
+        被过滤，不直接注入 Agent prompt<br>
+        <span style="color: var(--text-secondary);">→ 通过工具系统间接参与 Pipeline</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ──────────────────────── 3 ──────────────────────── -->
+<h2 id="3-comment-前缀体系">3. Comment 前缀体系</h2>
+
+<h3 id="31-标准叙事前缀">3.1 标准叙事前缀</h3>
+
+<table>
+  <thead>
+    <tr><th>前缀</th><th>用途</th><th>建议注入方式</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>无前缀</td><td>通用叙事设定</td><td>position=0, constant</td></tr>
+    <tr><td><code>[LOCATION]</code></td><td>地点描述</td><td>position=0, constant</td></tr>
+    <tr><td><code>[NPC]</code></td><td>NPC 描述</td><td>position=0, constant</td></tr>
+    <tr><td><code>[QUEST]</code></td><td>任务定义</td><td>position=0, constant</td></tr>
+    <tr><td><code>[RULE]</code></td><td>规则约束</td><td>position=4, role=0, constant</td></tr>
+  </tbody>
+</table>
+
+<h3 id="32-工具前缀">3.2 工具前缀</h3>
+<table>
+  <thead><tr><th>前缀</th><th>用途</th></tr></thead>
+  <tbody><tr><td><code>[TOOL:name]</code></td><td>定义自定义工具</td></tr></tbody>
+</table>
+
+<h3 id="33-状态前缀">3.3 状态前缀</h3>
+<table>
+  <thead><tr><th>前缀</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td><code>[initvar]</code></td><td>MVU 变量初始值</td></tr>
+    <tr><td><code>[mvu_update]</code></td><td>MVU 变量更新规则</td></tr>
+  </tbody>
+</table>
+
+<!-- ──────────────────────── 4 ──────────────────────── -->
+<h2 id="4-工具定义-toolname">4. 工具定义 [TOOL:name]</h2>
+<p>通过 <code>[TOOL:name]</code> 前缀在 Pipeline 中注册自定义工具。content 字段为 JSON 格式。</p>
+
+<h3 id="41-工具类型对比">4.1 工具类型对比</h3>
+<table>
+  <thead>
+    <tr><th>属性</th><th>code 工具</th><th>llm 工具</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>执行方式</td><td>插件代码层确定性执行</td><td>调用 LLM 生成内容</td></tr>
+    <tr><td>是否调 LLM</td><td>否</td><td>是</td></tr>
+    <tr><td>典型用途</td><td>掷骰、计算、状态机</td><td>行动建议、文本生成、格式转换</td></tr>
+    <tr><td>输出可控性</td><td>完全确定性</td><td>LLM 生成，需在 prompt 中约束格式</td></tr>
+  </tbody>
+</table>
+
+<h3 id="42-trigger决定执行时机">4.2 Trigger：决定执行时机</h3>
+<table>
+  <thead>
+    <tr><th>trigger</th><th>执行时机</th><th>对写作 Agent 可见</th><th>对用户可见</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>planning</code></td><td>规划 Agent 之后、写作 Agent 之前</td><td>是</td><td>否</td></tr>
+    <tr><td><code>post_pipeline</code></td><td>合并分析 Agent 之后（串行模式）</td><td>否</td><td>是</td></tr>
+  </tbody>
+</table>
+
+<p><strong>planning 工具的隔离语义</strong>：结果注入写作 Agent 但不显示给用户。适合需要 AI 辅助推理但不需要用户看到中间过程的功能(如场景分析、NPC 行为推演、掷骰判定)。</p>
+
+<p><strong>post_pipeline 工具的展示语义</strong>：结果拼接到 chat[] 末尾，用户可见。适合需要用户交互的功能(如行动选项、状态面板)。</p>
+
+<p><strong>并行模式下的时序优化</strong>：开启并行处理后，插件会根据工具的 <code>context</code> 字段自动判断其依赖关系。声明了 <code>story_summary</code> / <code>state_summary</code> / <code>known_context</code> 的工具依赖合并分析的输出，在分析完成后串行执行；其余工具与合并分析并行调用，节省整体耗时。</p>
+
+<h3 id="43-code-工具格式">4.3 code 工具格式</h3>
+<p>code 工具分为两类：<strong>内置工具</strong>（<code>roll_dice</code>）和<strong>自定义 code 工具</strong>。自定义 code 工具通过 <code>code</code> 字段定义确定性计算逻辑，不调用 LLM。</p>
+
+<h4>4.3.1 内置工具：roll_dice</h4>
+<pre><code>{
+  "uid": 600,
+  "comment": "[TOOL:roll_dice]",
+  "key": [],
+  "content": "{\n  \"type\": \"code\",\n  \"function\": {\n    \"name\": \"roll_dice\",\n    \"description\": \"执行技能检定掷骰，判断角色行动成败\",\n    \"parameters\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"mode\": { \"type\": \"string\", \"enum\": [\"normal\", \"advantage\", \"disadvantage\", \"exploding\"], \"description\": \"检定类型\" },\n        \"expr\": { \"type\": \"string\", \"description\": \"骰子表达式，如 1d20+3\" },\n        \"dc\": { \"type\": \"number\", \"description\": \"目标难度，可选\" }\n      },\n      \"required\": [\"mode\", \"expr\"]\n    }\n  }\n}",
+  "constant": true,
+  "enabled": true,
+  "order": 600
+}</code></pre>
+
+<p><strong>内容字段说明</strong>：</p>
+<table>
+  <thead><tr><th>字段</th><th>必须</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><code>type</code></td><td>是</td><td>固定为 <code>"code"</code></td></tr>
+    <tr><td><code>function.name</code></td><td>是</td><td>固定为 <code>"roll_dice"</code></td></tr>
+    <tr><td><code>function.description</code></td><td>是</td><td>一行描述，注入规划 Agent 的工具列表</td></tr>
+    <tr><td><code>function.parameters</code></td><td>是</td><td>JSON Schema 格式，定义检定参数</td></tr>
+  </tbody>
+</table>
+
+<p><strong>mode 枚举值</strong>：</p>
+<table>
+  <thead><tr><th>值</th><th>含义</th></tr></thead>
+  <tbody>
+    <tr><td><code>normal</code></td><td>普通掷骰(默认)</td></tr>
+    <tr><td><code>advantage</code></td><td>优势(2d20取高)</td></tr>
+    <tr><td><code>disadvantage</code></td><td>劣势(2d20取低)</td></tr>
+    <tr><td><code>exploding</code></td><td>爆炸骰(出最大值追加一骰)</td></tr>
+  </tbody>
+</table>
+
+<h4>4.3.2 自定义 code 工具</h4>
+<p>自定义 code 工具需要额外提供 <code>code</code> 字段，内容为 JavaScript 函数体（不含函数声明）。运行时将接收两个参数：</p>
+
+<table>
+  <thead><tr><th>参数</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><code>params</code></td><td>规划 Agent 传入的工具参数对象</td></tr>
+    <tr><td><code>state</code></td><td>当前游戏状态快照 <code>{}</code>，可通过 <code>state.变量名</code> 访问 MVU 变量值</td></tr>
+  </tbody>
+</table>
+
+<p>代码体通过 <code>return</code> 语句输出结果，返回值可以是任意类型（对象、字符串、数字等）。结果会以 JSON 双空格缩进格式注入写作 Agent。</p>
+
+<pre><code>{
+  "uid": 610,
+  "comment": "[TOOL:damage_calc]",
+  "key": [],
+  "content": "{\n  \"type\": \"code\",\n  \"function\": {\n    \"name\": \"damage_calc\",\n    \"description\": \"根据攻防数值计算伤害结果\",\n    \"parameters\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"atk\": { \"type\": \"number\", \"description\": \"攻击力\" },\n        \"def\": { \"type\": \"number\", \"description\": \"防御力\" }\n      },\n      \"required\": [\"atk\", \"def\"]\n    }\n  },\n  \"code\": \"const damage = Math.max(0, params.atk - params.def);\\nreturn { damage, remaining_hp: Math.max(0, state.hp - damage) };\"\n}",
+  "constant": true,
+  "enabled": true,
+  "order": 610
+}</code></pre>
+
+<p><strong>字段说明</strong>：</p>
+<table>
+  <thead><tr><th>字段</th><th>必须</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><code>code</code></td><td>是</td><td>JavaScript 函数体，<code>return</code> 输出的值作为工具结果。接收 <code>params</code>（工具参数）和 <code>state</code>（状态快照）两个变量</td></tr>
+  </tbody>
+</table>
+
+<p><strong>不需要的字段</strong>：code 工具（内置和自定义）均不需要 <code>trigger</code>、<code>context</code>、<code>system_prompt</code> 字段。这些字段仅 llm 工具使用。</p>
+
+<p><strong>代码规范</strong>：</p>
+<ul>
+  <li>必须是有效的 JavaScript 语法，注册前会自动进行语法校验</li>
+  <li>通过 <code>params.参数名</code> 访问规划 Agent 传入的参数值</li>
+  <li>通过 <code>state.变量名</code> 访问当前 MVU 状态变量值</li>
+  <li>运行异常会被自动捕获为工具错误，不会导致 Pipeline 中断</li>
+  <li>代码在浏览器 JS 上下文中执行，可使用 JS 内置对象（<code>Math</code>、<code>Date</code>、<code>JSON</code> 等）</li>
+</ul>
+
+<h3 id="44-llm-工具格式">4.4 llm 工具格式</h3>
+<pre><code>{
+  "uid": 700,
+  "comment": "[TOOL:action_generator]",
+  "key": [],
+  "content": "{\n  \"type\": \"llm\",\n  \"trigger\": \"planning\",\n  \"function\": {\n    \"name\": \"action_generator\",\n    \"description\": \"根据当前场景和玩家状态生成合理的行动选项\",\n    \"parameters\": { \"type\": \"object\", \"properties\": {}, \"required\": [] }\n  },\n  \"context\": [\"narrative_text\", \"state_summary\", \"user_input\"],\n  \"system_prompt\": \"你是行动选项生成器。根据当前游戏场景和玩家状态，生成 3-5 个合理的行动选项。\\n\\n输出格式：\\n&lt;actions&gt;\\n&lt;action&gt;选项描述&lt;/action&gt;\\n...\\n&lt;/actions&gt;\"\n}",
+  "constant": true,
+  "enabled": true,
+  "order": 700
+}</code></pre>
+
+<p><strong>内容字段说明</strong>：</p>
+<table>
+  <thead>
+    <tr><th>字段</th><th>必须</th><th>说明</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>type</code></td><td>是</td><td>固定为 <code>"llm"</code></td></tr>
+    <tr><td><code>trigger</code></td><td>是</td><td><code>"planning"</code> 或 <code>"post_pipeline"</code></td></tr>
+    <tr><td><code>function.name</code></td><td>是</td><td>自定义，蛇形命名(snake_case)，如 <code>action_generator</code></td></tr>
+    <tr><td><code>function.description</code></td><td>是</td><td>一行描述，注入规划 Agent 工具列表</td></tr>
+    <tr><td><code>function.parameters</code></td><td>是</td><td>JSON Schema，无参时 properties 为空对象</td></tr>
+    <tr><td><code>context</code></td><td>是</td><td>字符串数组，声明需要的上下文组分(见下方)</td></tr>
+    <tr><td><code>system_prompt</code></td><td>是</td><td>工具的 system message，定义 LLM 角色、输出格式和约束规则</td></tr>
+  </tbody>
+</table>
+
+<p><strong>可用 context 值</strong>：</p>
+<table>
+  <thead><tr><th>值</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><code>world_full</code></td><td>世界书全文</td></tr>
+    <tr><td><code>story_summary</code></td><td>故事压缩摘要</td></tr>
+    <tr><td><code>recent_turns</code></td><td>最近叙事片段</td></tr>
+    <tr><td><code>narrative_text</code></td><td>写作 Agent 产出的叙事正文</td></tr>
+    <tr><td><code>writing_guide</code></td><td>规划 Agent 产出的写作指导</td></tr>
+    <tr><td><code>state_summary</code></td><td>当前游戏状态摘要</td></tr>
+    <tr><td><code>user_persona</code></td><td>用户角色设定</td></tr>
+    <tr><td><code>user_input</code></td><td>本轮玩家输入</td></tr>
+    <tr><td><code>dice_results</code></td><td>掷骰检定结果</td></tr>
+    <tr><td><code>known_context</code></td><td>已知地点/NPC/物品/任务</td></tr>
+  </tbody>
+</table>
+
+<blockquote>
+  <strong>注意</strong>：<code>context</code> 数组中的顺序不影响实际拼接顺序。插件始终按固定规范序列组装上下文，以最大化 API 缓存命中率。
+</blockquote>
+
+<h3 id="45-规划-agent-如何调用工具">4.5 规划 Agent 如何调用工具</h3>
+<p>规划 Agent 在输出 JSON 中通过 <code>tool_calls</code> 字段声明需要调用的工具：</p>
+
+<pre><code>{
+  "narrative_direction": "角色尝试说服守卫放行",
+  "key_points": ["使用话术与守卫交涉", "强调自己来自法师公会"],
+  "tone": "紧张",
+  "pacing": "中",
+  "continuity_notes": ["守卫之前对玩家表现出怀疑态度"],
+  "tool_calls": [
+    {
+      "tool": "roll_dice",
+      "params": {
+        "mode": "normal",
+        "expr": "1d20+3",
+        "dc": 15,
+        "success_branch": "守卫被说服，点头放行",
+        "failure_branch": "守卫摇头，要求出示通行证"
+      },
+      "reason": "说服守卫属于魅力检定"
+    },
+    {
+      "tool": "action_generator",
+      "params": {},
+      "reason": "根据当前场景生成玩家可选行动"
+    }
+  ]
+}</code></pre>
+
+<p>每个 tool_call 包含：</p>
+<table>
+  <thead><tr><th>字段</th><th>必须</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><code>tool</code></td><td>是</td><td>工具名，对应 <code>function.name</code></td></tr>
+    <tr><td><code>params</code></td><td>是</td><td>工具参数，对应 <code>parameters</code> 定义</td></tr>
+    <tr><td><code>reason</code></td><td>否</td><td>调用原因，用于调试和日志</td></tr>
+  </tbody>
+</table>
+
+<p><strong>code 工具额外字段</strong>(roll_dice 专用)：</p>
+<table>
+  <thead><tr><th>字段</th><th>必须</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td><code>success_branch</code></td><td>否</td><td>成功时的叙事走向提示，注入写作 Agent</td></tr>
+    <tr><td><code>failure_branch</code></td><td>否</td><td>失败时的叙事走向提示，注入写作 Agent</td></tr>
+  </tbody>
+</table>
+
+<h3 id="46-llm-工具的-system_prompt-编写建议">4.6 llm 工具的 system_prompt 编写建议</h3>
+<ol>
+  <li><strong>以"你是XXX生成器"开头</strong>：明确 LLM 的角色身份</li>
+  <li><strong>声明输出格式</strong>：用 XML 标签包裹输出，如 <code>&lt;actions&gt;...&lt;/actions&gt;</code>、<code>&lt;state_panel&gt;...&lt;/state_panel&gt;</code></li>
+  <li><strong>自行声明包裹格式</strong>：插件不预设包裹标签，因为无法预判每个工具的格式需求。在 system_prompt 中显式要求 LLM 用特定标签包裹</li>
+  <li><strong>列出约束规则</strong>：用简短的要点列出生成规则</li>
+  <li><strong>最后加一句"只输出上述格式，不输出其他文字"</strong>：防止 LLM 添加额外解释</li>
+</ol>
+
+<!-- ──────────────────────── 5 ──────────────────────── -->
+<h2 id="5-mvu-变量管理">5. MVU 变量管理</h2>
+
+<h3 id="51-initvar-变量初始化">5.1 [initvar] 变量初始化</h3>
+<p>定义状态变量的初始值。content 为 JSON 对象。</p>
+
+<pre><code>{
+  "uid": 800,
+  "comment": "[initvar] 初始状态变量",
+  "key": [],
+  "content": "{\n  \"hp\": 100,\n  \"maxHp\": 100,\n  \"mp\": 50,\n  \"maxMp\": 50,\n  \"level\": 1,\n  \"exp\": 0,\n  \"gold\": 100\n}",
+  "constant": true,
+  "enabled": true,
+  "order": 800
+}</code></pre>
+
+<ul>
+  <li>key 可留空(前缀直接匹配)</li>
+  <li>变量名自行定义，需与 [mvu_update] 中的路径一致</li>
+</ul>
+
+<h3 id="52-mvu_update-变量更新规则">5.2 [mvu_update] 变量更新规则</h3>
+<p>定义事件提取后的变量更新规则。content 为 JSON Patch 操作数组(RFC 6902 格式)。</p>
+
+<pre><code>{
+  "uid": 900,
+  "comment": "[mvu_update] 战斗伤害更新",
+  "key": [],
+  "content": "[\n  { \"op\": \"replace\", \"path\": \"/hp\", \"value\": \"{{damage_result}}\" }\n]",
+  "constant": true,
+  "enabled": true,
+  "order": 900
+}</code></pre>
+
+<ul>
+  <li>支持的操作：<code>replace</code>、<code>add</code>、<code>remove</code>、<code>move</code>、<code>copy</code>、<code>test</code></li>
+  <li><code>{{变量名}}</code> 为事件提取 agent 输出的动态值占位符</li>
+  <li>key 可留空(前缀直接匹配)</li>
+</ul>
+
+<!-- ──────────────────────── 6 ──────────────────────── -->
+<h2 id="6-预设注入">6. 预设注入</h2>
+<p>SillyTavern 预设中的"AI 回复设定"文本可以通过 <code>presetMode: "split"</code> 注入到 Agent 中：</p>
+
+<table>
+  <thead>
+    <tr><th>预设中的消息角色</th><th>注入目标</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>system 消息</td><td>规划 Agent system + 写作 Agent system</td></tr>
+    <tr><td>user 消息(长度 &gt;100)</td><td>写作 Agent user</td></tr>
+  </tbody>
+</table>
+
+<p><code>presetMode: "none"</code> 时忽略全部预设内容。</p>
+
+<blockquote>
+  <strong>注意</strong>：预设中的 user 消息通常用于在酒馆中定义副本模式(scenario mode)的提示。当 <code>presetMode: "split"</code> 时，这些提示会注入写作 Agent 的 user message 顶部。
+</blockquote>
+
+<!-- ──────────────────────── 7 ──────────────────────── -->
+<h2 id="7-order-分组建议">7. Order 分组建议</h2>
+<p>建议的 order 范围分配，便于维护和阅读：</p>
+
+<table>
+  <thead><tr><th>前缀类型</th><th>order 范围</th></tr></thead>
+  <tbody>
+    <tr><td>无前缀(叙事设定)</td><td>100-199</td></tr>
+    <tr><td><code>[LOCATION]</code></td><td>200-299</td></tr>
+    <tr><td><code>[NPC]</code></td><td>300-399</td></tr>
+    <tr><td><code>[QUEST]</code></td><td>400-499</td></tr>
+    <tr><td><code>[RULE]</code></td><td>500-599</td></tr>
+    <tr><td><code>[TOOL:xxx]</code> (code)</td><td>600-649</td></tr>
+    <tr><td><code>[TOOL:xxx]</code> (llm)</td><td>650-799</td></tr>
+    <tr><td><code>[initvar]</code></td><td>800-899</td></tr>
+    <tr><td><code>[mvu_update]</code></td><td>900-999</td></tr>
+  </tbody>
+</table>
+
+<!-- ──────────────────────── 8 ──────────────────────── -->
+<h2 id="8-最佳实践">8. 最佳实践</h2>
+
+<h3 id="81-条目设计原则">8.1 条目设计原则</h3>
+<ol>
+  <li><strong>system 放规则，user 放叙事</strong>：永久性的世界规则、系统约束放在 @D(position=4, role=system)；描述性内容(地点、NPC、场景)放在 Char(position=0)</li>
+  <li><strong>一个条目只做一件事</strong>：不要把 NPC 描述和地点描述混在同一个条目里——这会让关键词匹配变得不可预测</li>
+  <li><strong>关键词要精准</strong>：选择性条目(constant=false)的 key 应该覆盖实际会在对话中出现的词汇。使用别名、简称、常见错别字作为额外 key</li>
+  <li><strong>content 保持简洁</strong>：每个条目的 content 控制在 200-500 字。过长的 content 会稀释关键词匹配的精确性，也浪费 token</li>
+  <li><strong>权衡条件激活</strong>：永久激活的条目总会命中缓存，触发激活的条目注入位置在历史对话之后，跨轮时总是无法命中缓存。不建议在角色后的条目中使用过于复杂的内容描述，否则会导致成本显著增加。</li>
+</ol>
+
+<h3 id="82-工具设计原则">8.2 工具设计原则</h3>
+<ol>
+  <li><strong>planning 工具保持轻量</strong>：planning 工具的结果注入写作 Agent，token 消耗会计入写作 Agent 的上下文。避免在 planning 工具中生成大量文本</li>
+  <li><strong>post_pipeline 工具用于用户可见内容</strong>：状态面板、行动选项、旁白点评等内容用 post_pipeline 工具生成</li>
+  <li><strong>llm 工具的 system_prompt 中明确输出标签</strong>：始终声明 <code>&lt;标签&gt;内容&lt;/标签&gt;</code> 格式，便于您使用正则处理后经由酒馆助手进行前端渲染。直接命令llm工具输出可被渲染的代码块也是可行的，但输出文本量过多会导致api请求的成本显著变高</li>
+</ol>
+
+<h3 id="83-缓存优化">8.3 缓存优化</h3>
+<ol>
+  <li><strong>constant 条目放 system</strong>：永久激活的 system 条目跨轮不变，完全命中 API prefix cache</li>
+  <li><strong>避免在关键词条目中频繁变更 content</strong>：如果内容变化频繁，考虑拆分为多个更小粒度的条目</li>
+  <li><strong>预设中的 system 消息保持稳定</strong>：避免在预设中放置每轮变化的动态内容</li>
+</ol>
+
+<!-- ──────────────────────── 9 ──────────────────────── -->
+<h2 id="9-常见问题">9. 常见问题</h2>
+
+<h3>Q: 为什么我的 [TOOL:xxx] 条目内容出现在叙事中了？</h3>
+<p>插件通过两种方式识别工具条目：(1) comment 前缀 <code>[TOOL:*]</code>；(2) content 的 JSON 结构（<code>{"type":"llm"/"code", "function":...}</code>）。满足任一条件即被识别并过滤。</p>
+<p>如果你的工具条目内容出现在叙事中，检查以下几点：</p>
+<ol>
+  <li>comment 是否以 <code>[TOOL:name]</code> 开头——这是主要的识别方式</li>
+  <li>content 是否为合法的工具定义 JSON（如果 content 被改成了纯文本且 comment 也被清除，插件将无法识别）</li>
+  <li>条目是否被禁用（disabled 的条目不会被注入，也不会被过滤识别）</li>
+</ol>
+<p><strong>建议</strong>：始终在 comment 中使用 <code>[TOOL:name]</code> 前缀，这是最可靠的识别方式。content 兜底检测是为了防御 comment 意外丢失的容错机制。</p>
+
+<h3>Q: 为什么关键词条目(constant=false)不生效？</h3>
+<p>检查以下三点：</p>
+<ol>
+  <li>key 是否为空(关键词条目必须有关键词)</li>
+  <li>关键词是否真的出现在最近的聊天文本中(插件检查最近 2 条消息)</li>
+  <li>条目是否被禁用(enabled 是否为 true)</li>
+</ol>
+
+<h3>Q: planning 工具和 post_pipeline 工具的区别？</h3>
+<p>planning 工具的输出仅供写作 Agent 参考，用户不可见。post_pipeline 工具的输出拼接到 chat[] 末尾，用户可见。选择标准：是否需要用户看到和交互。</p>
+
+<h3>Q: 如何让写作 Agent 知道掷骰结果？</h3>
+<p>当规划 Agent 返回包含 <code>roll_dice</code> 的 <code>tool_calls</code> 时，插件自动执行掷骰，并将格式化的检定结果注入写作 Agent 的 user message 末尾(<code>[工具结果]</code> 区块)。同时 system message 会追加一条约束"必须严格按照结果中的走向来写作"。</p>
+
+<h3>Q: 预设注入后，为什么内容出现在奇怪的位置？</h3>
+<p>预设中 system 消息注入所有 Agent 的 system message(作为前缀)；user 消息仅注入写作 Agent 的 user message。system 消息通常包含全局角色定义以及元认知，适合所有 Agent；user 消息通常是场景模式以及写作规范提示，适合写作 Agent。</p>
+
+<h3>Q: order 值影响什么？</h3>
+<p>order 影响同一分类内条目的排序。对于永久激活的条目，order 决定注入 prompt 时的顺序(order 小的排在前面)。这会影响 LLM 阅读世界设定的顺序，建议将更基础、更通用的设定放在前面(较小的 order)。</p>
+
+<h3>Q: 条目应该放在角色卡里还是世界书里？</h3>
+<p>建议放在世界书中。角色卡通常包含角色扮演噪音和格式信息，插件不读取角色卡内容。世界书条目提供的设定可以精确控制注入位置和策略。如果使用卡包(PNG 内嵌世界书)，在插件设置中选择 <code>worldbookSource: "card"</code>。</p>
+
+</main>
+
+<!-- ═══════════ SCRIPT: Scroll Spy ═══════════ -->
+<script>
+(function() {
+  var links = document.querySelectorAll("#sidebar nav a");
+  var sections = [];
+  links.forEach(function(a) {
+    var id = a.getAttribute("href").replace("#", "");
+    var el = document.getElementById(id);
+    if (el) sections.push({ el: el, link: a });
+  });
+  window.addEventListener("scroll", function() {
+    var scrollY = window.scrollY + 80;
+    var current = null;
+    for (var i = 0; i < sections.length; i++) {
+      if (sections[i].el.offsetTop <= scrollY) {
+        current = sections[i];
+      }
+    }
+    links.forEach(function(a) { a.classList.remove("active"); });
+    if (current) current.link.classList.add("active");
+  });
+})();
+</script>
+
+</body>
+</html>
