@@ -46,7 +46,8 @@ export class WorldInfoResolver {
       const entryIds = Object.keys(entryDict).sort();
       const fingerprintParts = entryIds.map(uid => {
         const e = entryDict[uid];
-        return `${uid}|${JSON.stringify(e.key)}|${e.content}|${e.comment||""}|${e.disable?"1":"0"}|${e.constant?"1":"0"}|${e.position||0}|${e.order||0}|${e.selective?"1":"0"}`;
+        const keys = this._getKeys(e).join(",");
+        return `${uid}|${keys}|${e.content}|${e.comment||""}|${this._isEnabled(e)?"1":"0"}|${e.constant?"1":"0"}|${e.position||0}|${e.order||0}|${e.selective?"1":"0"}`;
       });
       const fingerprint = _fastHash(fingerprintParts.join("\n"));
       const cacheKey = `card:${ctx.characterId}:${fingerprint}`;
@@ -55,6 +56,11 @@ export class WorldInfoResolver {
       this._entriesCache = entries;
       this._entriesCacheKey = cacheKey;
       console.log("[NA] WorldInfo loaded from card:", entries.length, "entries");
+      if (entries.length > 0) {
+        for (const e of entries) {
+          console.log(`[NA:WI:raw] comment="${e.comment||""}" constant=${e.constant} enabled=${this._isEnabled(e)} position=${e.position} role=${e.role} order=${e.order} key=[${this._getKeys(e).join(", ")}] keysecondary=[${this._getSecondaryKeys(e).join(", ")}] selective=${e.selective} vectorized=${e.vectorized}`);
+        }
+      }
       return entries;
     } catch (e) { console.error("[NA] _getAllFromCard error:", e); return []; }
   }
@@ -74,7 +80,35 @@ export class WorldInfoResolver {
     } catch (e) { console.error("[NA] _getAllFromWorld error:", e); return []; }
   }
 
-  _isEnabled(e) { return !e.disable; }
+  _isEnabled(e) {
+    if (typeof e.disable !== "undefined") return !e.disable;
+    if (typeof e.enabled !== "undefined") return e.enabled === true;
+    return true;
+  }
+
+  _getTruePosition(entry) {
+    return entry.extensions?.position ?? entry.position;
+  }
+
+  _getKeys(entry) {
+    return entry.key ?? entry.keys ?? [];
+  }
+
+  _getSecondaryKeys(entry) {
+    return entry.keysecondary ?? entry.secondary_keys ?? [];
+  }
+
+  _isBeforeCharPosition(position) {
+    return position === 0 || position === "before_char";
+  }
+
+  _isAfterCharPosition(position) {
+    return position === 1 || position === "after_char";
+  }
+
+  _isAtDepthPosition(position) {
+    return position === 4 || position === "at_depth";
+  }
 
   invalidateCache() {
     this._entriesCache = null;
@@ -93,7 +127,7 @@ export class WorldInfoResolver {
     const entries = await this._getAll();
     return entries
       .filter(e => this._isEnabled(e))
-      .map(e => `- ${e.comment || e.key?.[0] || "\u672a\u547d\u540d"}: ${truncate(e.content, 80)}`)
+      .map(e => `- ${e.comment || this._getKeys(e)[0] || "\u672a\u547d\u540d"}: ${truncate(e.content, 80)}`)
       .join("\n");
   }
 
@@ -126,7 +160,7 @@ export class WorldInfoResolver {
       .sort((a, b) => (a.order || 0) - (b.order || 0));
     if (active.length === 0) return "";
     return active.map(e => {
-      const label = e.comment || e.key?.[0] || "\u672a\u547d\u540d";
+      const label = e.comment || this._getKeys(e)[0] || "\u672a\u547d\u540d";
       return `--- ${label} ---\n${e.content}`;
     }).join("\n\n");
   }
@@ -138,7 +172,7 @@ export class WorldInfoResolver {
       .sort((a, b) => (a.order || 0) - (b.order || 0));
     if (active.length === 0) return "";
     return active.map(e => {
-      const label = e.comment || e.key?.[0] || "\u672a\u547d\u540d";
+      const label = e.comment || this._getKeys(e)[0] || "\u672a\u547d\u540d";
       return `--- ${label} ---\n${e.content}`;
     }).join("\n\n");
   }
@@ -146,9 +180,9 @@ export class WorldInfoResolver {
   async syncToStateManager() {
     const entries = await this._getAll();
     for (const entry of entries) {
-      if (!entry.enabled) continue;
+      if (!this._isEnabled(entry)) continue;
       if (this._isQuest(entry)) {
-        const questId = entry.key?.[0];
+        const questId = this._getKeys(entry)[0];
         if (questId && !this.stateManager.state.quests[questId]) {
           this.stateManager.state.quests[questId] = { status: "active", stage: "\u672a\u5f00\u59cb" };
         }
@@ -164,9 +198,9 @@ export class WorldInfoResolver {
     const locations = [];
     const npcs = [];
     for (const entry of entries) {
-      if (!entry.enabled) continue;
-      if ((entry.comment || "").startsWith("[LOCATION]") && entry.key?.[0]) locations.push(entry.key[0]);
-      if ((entry.comment || "").startsWith("[NPC]") && entry.key?.[0]) npcs.push(entry.key[0]);
+      if (!this._isEnabled(entry)) continue;
+      if ((entry.comment || "").startsWith("[LOCATION]") && this._getKeys(entry)[0]) locations.push(this._getKeys(entry)[0]);
+      if ((entry.comment || "").startsWith("[NPC]") && this._getKeys(entry)[0]) npcs.push(this._getKeys(entry)[0]);
     }
     return {
       locations,
@@ -393,9 +427,15 @@ export class WorldInfoResolver {
   }
 
   _matchesKeys(entry, text) {
-    if (!entry.key || entry.key.length === 0) return false;
-    const keys = Array.isArray(entry.key) ? entry.key : [entry.key];
-    return keys.some(k => text.toLowerCase().includes(k.toLowerCase()));
+    const primaryKeys = this._getKeys(entry);
+    const secondaryKeys = this._getSecondaryKeys(entry);
+    const allKeys = [...primaryKeys, ...secondaryKeys];
+    if (allKeys.length === 0) return false;
+    const lower = text.toLowerCase();
+    return allKeys.some(k => {
+      if (!k || typeof k !== "string") return false;
+      return lower.includes(k.toLowerCase());
+    });
   }
 
   _getRecentChatText(rounds) {
@@ -410,24 +450,87 @@ export class WorldInfoResolver {
 
   async getConstantSystemEntries() {
     const entries = await this._getAll();
-    return entries
-      .filter(e => this._isEnabled(e) && !this._isFormattingEntry(e) && e.constant === true && e.position === 4 && e.role === 0)
+    console.log(`[NA:WI] getConstantSystemEntries: 原始条目数=${entries.length}`);
+    const filtered = entries.filter(e => {
+      const isEnabled = this._isEnabled(e);
+      const notFormatting = !this._isFormattingEntry(e);
+      const isConstant = e.constant === true;
+      if (!isEnabled || !notFormatting || !isConstant) return false;
+      const isAtDepth = this._isAtDepthPosition(this._getTruePosition(e));
+      const truePos = this._getTruePosition(e);
+      const displayPos = typeof truePos === "number" ? truePos : `"${truePos}"`;
+      console.log(`[NA:WI] getConstantSystemEntries 候选: comment="${e.comment}" constant=${isConstant} position=${displayPos} isAtDepth=${isAtDepth}`);
+      return isAtDepth;
+    });
+    console.log(`[NA:WI] getConstantSystemEntries: 过滤后条目数=${filtered.length}`);
+    return filtered
       .sort((a, b) => (a.order || 0) - (b.order || 0))
       .map(e => e.content);
   }
 
   async getConstantBeforeCharEntries() {
     const entries = await this._getAll();
-    return entries
-      .filter(e => this._isEnabled(e) && !this._isFormattingEntry(e) && e.constant === true && e.position === 0)
+    console.log(`[NA:WI] getConstantBeforeCharEntries: 原始条目数=${entries.length}`);
+    const filtered = entries.filter(e => {
+      const isEnabled = this._isEnabled(e);
+      const notFormatting = !this._isFormattingEntry(e);
+      const isConstant = e.constant === true;
+      if (!isEnabled || !notFormatting || !isConstant) return false;
+      const isBeforeChar = this._isBeforeCharPosition(this._getTruePosition(e));
+      const truePos = this._getTruePosition(e);
+      const displayPos = typeof truePos === "number" ? truePos : `"${truePos}"`;
+      console.log(`[NA:WI] getConstantBeforeCharEntries 候选: comment="${e.comment}" constant=${isConstant} position=${displayPos} isBeforeChar=${isBeforeChar}`);
+      return isBeforeChar;
+    });
+    console.log(`[NA:WI] getConstantBeforeCharEntries: 过滤后条目数=${filtered.length}`);
+    return filtered
       .sort((a, b) => (a.order || 0) - (b.order || 0))
       .map(e => e.content);
   }
 
-  async getSelectiveActivatedEntries(chatText) {
+  async getConstantAfterCharEntries() {
     const entries = await this._getAll();
-    return entries
-      .filter(e => this._isEnabled(e) && !this._isFormattingEntry(e) && !e.constant && !e.vectorized && (e.key?.length > 0) && this._matchesKeys(e, chatText))
+    console.log(`[NA:WI] getConstantAfterCharEntries: 原始条目数=${entries.length}`);
+    const filtered = entries.filter(e => {
+      const isEnabled = this._isEnabled(e);
+      const notFormatting = !this._isFormattingEntry(e);
+      const isConstant = e.constant === true;
+      if (!isEnabled || !notFormatting || !isConstant) return false;
+      const isAfterChar = this._isAfterCharPosition(this._getTruePosition(e));
+      const truePos = this._getTruePosition(e);
+      const displayPos = typeof truePos === "number" ? truePos : `"${truePos}"`;
+      console.log(`[NA:WI] getConstantAfterCharEntries 候选: comment="${e.comment}" constant=${isConstant} position=${displayPos} isAfterChar=${isAfterChar}`);
+      return isAfterChar;
+    });
+    console.log(`[NA:WI] getConstantAfterCharEntries: 过滤后条目数=${filtered.length}`);
+    return filtered
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .map(e => e.content);
+  }
+
+  async getSelectiveActivatedEntries(chatText, stateSummary = "") {
+    const entries = await this._getAll();
+    const matchText = (chatText || "") + " " + (stateSummary || "");
+    console.log(`[NA:WI] getSelectiveActivatedEntries: 原始条目数=${entries.length}, 匹配文本长度=${matchText.length}`);
+    if (matchText) {
+      console.log(`[NA:WI] getSelectiveActivatedEntries: 匹配文本预览="${matchText.substring(0, 200)}"`);
+    }
+    const filtered = entries.filter(e => {
+      const isEnabled = this._isEnabled(e);
+      const notFormatting = !this._isFormattingEntry(e);
+      const notConstant = !e.constant;
+      const notVectorized = !e.vectorized;
+      const allKeys = [...this._getKeys(e), ...this._getSecondaryKeys(e)];
+      const hasKeys = allKeys.length > 0;
+      const keyMatch = hasKeys ? this._matchesKeys(e, matchText) : false;
+      if (isEnabled && notFormatting && notConstant && notVectorized) {
+        const keysDisplay = allKeys.length > 0 ? allKeys.join(", ") : "(无key)";
+        console.log(`[NA:WI] getSelectiveActivatedEntries 候选: comment="${e.comment}" keys=[${keysDisplay}] keyMatch=${keyMatch}`);
+      }
+      return isEnabled && notFormatting && notConstant && notVectorized && hasKeys && keyMatch;
+    });
+    console.log(`[NA:WI] getSelectiveActivatedEntries: 过滤后条目数=${filtered.length}`);
+    return filtered
       .sort((a, b) => (a.order || 0) - (b.order || 0))
       .map(e => e.content);
   }

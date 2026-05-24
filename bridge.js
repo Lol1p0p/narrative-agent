@@ -7,6 +7,7 @@ export class SillyTavernBridge {
     this.enabled = true;
     this.wasIntercepted = false;
     this.isPipelineRunning = false;
+    this._aborted = false;
     this._generationType = null;
     this._savedUserInput = null;
     this._generationCompleted = true;
@@ -59,12 +60,31 @@ export class SillyTavernBridge {
 
   _onPromptReady(data) {
     if (!this.enabled || this.isPipelineRunning) return;
+    this._aborted = false;
     console.log("[NarrativeAgent] 拦截 CHAT_COMPLETION_PROMPT_READY, 原始消息数:", data.chat?.length);
+
+    if (data.chat && data.chat.length > 0) {
+      const sample = data.chat[0];
+      console.log("[NA:bridge] data.chat[0] keys:", Object.keys(sample), "hasMes:", "mes" in sample, "hasContent:", "content" in sample, "hasIs_user:", "is_user" in sample, "hasRole:", "role" in sample);
+      console.log("[NA:bridge] data.chat[0] role:", sample.role, "is_user:", sample.is_user, "mes首80字:", sample.mes?.substring(0, 80), "content首80字:", sample.content?.substring(0, 80));
+    }
 
     this.orchestrator.worldInfoResolver.buildFormattingSet().catch(e => console.warn("[NA] buildFormattingSet in _onPromptReady failed:", e.message));
 
-    this._savedUserInput = getLatestUserInput(data.chat);
-    console.log("[NarrativeAgent] 已保存用户输入:", this._savedUserInput?.substring(0, 80));
+    const ctx = getSTContext();
+    const rawChat = ctx?.chat || [];
+    console.log("[NA:bridge] ctx.chat (前端展示消息) 长度:", rawChat.length);
+    if (rawChat.length > 0) {
+      const rawSample = rawChat[0];
+      console.log("[NA:bridge] ctx.chat[0] keys:", Object.keys(rawSample), "is_user:", rawSample.is_user, "mes长度:", rawSample.mes?.length);
+    }
+
+    this._savedUserInput = getLatestUserInput(rawChat);
+    console.log("[NarrativeAgent] 已保存用户输入:", this._savedUserInput?.substring(0, 80), "长度:", this._savedUserInput?.length);
+
+    const { turns } = this.orchestrator._extractTurnHistoryFromChat(rawChat);
+    this.orchestrator.applyChatExtractedContext(turns);
+    console.log("[NarrativeAgent] 从chat提取轮次:", turns.length);
 
     if (this.orchestrator.config.presetMode === "split") {
       const formattingSet = this.orchestrator.worldInfoResolver.getFormattingSet();
@@ -84,7 +104,7 @@ export class SillyTavernBridge {
   async _onGenerationEnded() {
     this._generationCompleted = true;
 
-    if (!this.enabled || this.isPipelineRunning || !this.wasIntercepted) return;
+    if (!this.enabled || this.isPipelineRunning || !this.wasIntercepted || this._aborted) return;
     this.wasIntercepted = false;
 
     const ctx = getSTContext();

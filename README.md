@@ -35,7 +35,7 @@ SillyTavern 扩展，通过多个**上下文隔离**的 Agent 处理用户输入
 - **上下文隔离**：每个 Agent 只看到完成任务所需的最小上下文，减少噪声引入
 - **确定性状态管理**：LLM 只建议状态变更，代码层负责验证和写入，杜绝幻觉篡改
 - **工具系统**：世界书作者可通过 `[TOOL:name]` 条目定义 Planning 阶段工具和 Post-Pipeline 工具，无需修改插件代码。支持内置 `roll_dice` 与自定义 code 工具（通过 `code` 字段定义 JavaScript 计算逻辑）
-- **世界书条目分类注入**：条目根据位置（system / before\_char）和激活策略（永久 / 关键词）自动路由到对应 Agent 的正确 message 位置
+- **世界书条目分类注入**：条目根据位置（system / before_char / after_char）和激活策略（永久 / 关键词）自动路由到对应 Agent 的正确 message 位置
 - **分段稳定前缀缓存**：对话历史窗口采用 n+m 分段生长策略，历史对话部分的token 级缓存命中率达 72%+，显著降低 API 使用成本
 - **零开销默认**：无工具时自动切换为合并输出模式（规划+写作二合一，单次 LLM 调用），比默认模式减少 1 次 API 请求
 - **对话级状态隔离**：每个对话独立维护游戏状态和摘要，切换对话自动保存/恢复
@@ -94,10 +94,11 @@ SillyTavern (CHAT_COMPLETION_PROMPT_READY)
 GENERATION_ENDED — 执行完整 Pipeline
   │
   ├─ [一次性加载] WorldInfoResolver 分类加载世界书条目
-  │   ├─ getConstantSystemEntries()     → system 条目（position=4, role=0, 永久激活）
-  │   ├─ getConstantBeforeCharEntries() → before_char 条目（position=0, 永久激活）
-  │   ├─ getSelectiveActivatedEntries() → 关键词匹配条目（非永久、非向量化）
-  │   └─ getActiveTools()               → [TOOL:*] 条目
+  │   ├─ getConstantSystemEntries()      → system 条目（position=4, role=0, 永久激活）
+  │   ├─ getConstantBeforeCharEntries()  → before_char 条目（position=0, 永久激活）
+  │   ├─ getConstantAfterCharEntries()   → after_char 条目（position=1, 永久激活）
+  │   ├─ getSelectiveActivatedEntries()  → 关键词匹配条目（匹配最近对话文本 + 游戏状态摘要，含主/副关键词）
+  │   └─ getActiveTools()                → [TOOL:*] 条目
   │
   ├─ ★ 无 planning 工具时：合并写作模式 ────→ 直接叙事正文（规划+写作二合一，单次 LLM 调用）
   │   system: {planningContext} + {systemEntries} + MERGED_WRITING_SUFFIX
@@ -240,8 +241,9 @@ n 和 m 控制分段稳定前缀窗口：窗口从 n 轮开始生长，达到 n+
 | 方法                               | 返回内容                                                       |
 | -------------------------------- | ---------------------------------------------------------- |
 | `getConstantSystemEntries()`     | 永久激活、position=4 (atDepth)、role=0 (system) 的条目，排序后注入 system |
-| `getConstantBeforeCharEntries()` | 永久激活、position=0 (before\_char) 的条目，排序后注入 user              |
-| `getSelectiveActivatedEntries()` | 关键词触发的非永久条目，匹配 chat 文本后注入 user                             |
+| `getConstantBeforeCharEntries()` | 永久激活、position=0 (before_char) 的条目，排序后注入 user              |
+| `getConstantAfterCharEntries()`  | 永久激活、position=1 (after_char) 的条目，排序后注入 user（与关键词条目合并）   |
+| `getSelectiveActivatedEntries()` | 关键词触发的非永久条目，匹配最近对话文本 + 游戏状态摘要后注入 user。同时匹配主关键词（key）和副关键词（keysecondary） |
 | `getActiveTools()`               | 所有 `[TOOL:name]` 前缀的条目，按 trigger 分两类                       |
 
 自动过滤格式条目（`[TOOL:*]`、`[UI]`、`[initvar]`、`[mvu_update]` 等用于系统功能而非叙事注入的条目）。此外，即使条目的 comment 字段被意外清除，插件也会通过 content 的 JSON 结构（`{"type":"llm"/"code", "function":...}`）自动识别工具条目并过滤。
@@ -261,14 +263,15 @@ n 和 m 控制分段稳定前缀窗口：窗口从 n 轮开始生长，达到 n+
 | UI 设置                  | position | role | 注入目标                              |
 | ---------------------- | -------- | ---- | --------------------------------- |
 | @D⚙（atDepth，角色=system） | 4        | 0    | 规划 Agent system + 写作 Agent system |
-| ↑Char（before\_char）    | 0        | 任意   | 规划 Agent user + 写作 Agent user     |
+| ↑Char（before_char）    | 0        | 任意   | 规划 Agent user + 写作 Agent user     |
+| ↓Char（after_char）     | 1        | 任意   | 写作 Agent user（与关键词条目合并为 worldinfo3） |
 
 激活策略决定是否注入：
 
-| 激活策略  | 世界书设置          | 注入条件                     |
-| ----- | -------------- | ------------------------ |
-| 永久激活  | constant=true  | 始终注入（position/role 决定位置） |
-| 关键词激活 | constant=false | 仅在关键词匹配最近聊天文本时注入         |
+| 激活策略  | 世界书设置          | 注入条件                                      |
+| ----- | -------------- | ----------------------------------------- |
+| 永久激活  | constant=true  | 始终注入（position/role 决定位置）                  |
+| 关键词激活 | constant=false | 主关键词（key）或副关键词（keysecondary）匹配最近对话文本 + 游戏状态摘要时注入 |
 
 ### 工具系统
 

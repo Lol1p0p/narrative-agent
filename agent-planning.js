@@ -3,9 +3,13 @@ import { parsePlanningOutput } from "./parser.js";
 import { PLANNING_SYSTEM_SUFFIX } from "./constants.js";
 
 export async function runPlanningAgent(ctx) {
-  const recentText = ctx.recentTurns
-    .map((t) => `[\u8f6e${t.turnNum}] \u7528\u6237: ${t.user}\n[\u8f6e${t.turnNum}] AI: ${t.assistant}`)
-    .join("\n\n");
+  const formatTurn = (t) => {
+    if (!t.user) {
+      return `[\u8f6e${t.turnNum}] AI: ${t.assistant}`;
+    }
+    return `[\u8f6e${t.turnNum}] \u7528\u6237: ${t.user}\n[\u8f6e${t.turnNum}] AI: ${t.assistant}`;
+  };
+  const recentText = ctx.recentTurns.map(formatTurn).join("\n\n");
 
   let systemContent = "";
 
@@ -33,10 +37,7 @@ export async function runPlanningAgent(ctx) {
   if (ctx.userPersona) {
     userContent += `\n\n<user_persona>\n${ctx.userPersona}\n</user_persona>`;
   }
-  if (ctx.openingNarrative) {
-    userContent += `\n\n<opening_narrative>\n${ctx.openingNarrative}\n</opening_narrative>`;
-  }
-    userContent += `\n\n<recent_turns>\n${recentText}\n</recent_turns>`;
+  userContent += `\n\n<recent_turns>\n${recentText}\n</recent_turns>`;
   if (ctx.selectiveEntries && ctx.selectiveEntries.length > 0) {
     userContent += "\n\n<worldinfo3>\n" + ctx.selectiveEntries.join("\n\n") + "\n</worldinfo3>";
   }

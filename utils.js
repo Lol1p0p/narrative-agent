@@ -155,7 +155,11 @@ export function getConversationId() {
 export function getLatestUserInput(chat) {
   if (!chat || !Array.isArray(chat) || chat.length === 0) return "";
   for (let i = chat.length - 1; i >= 0; i--) {
-    if (chat[i] && chat[i].is_user && chat[i].mes) return chat[i].mes;
+    const msg = chat[i];
+    if (!msg) continue;
+    const isUser = msg.is_user === true || msg.role === "user";
+    const text = msg.mes || msg.content;
+    if (isUser && text) return text;
   }
   return "";
 }

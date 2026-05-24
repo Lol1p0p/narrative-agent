@@ -23,9 +23,13 @@ export async function runWritingAgent(ctx) {
     systemContent += "\n- \u5de5\u5177\u6267\u884c\u7ed3\u679c\u5df2\u7531\u7cfb\u7edf\u786e\u5b9a\uff0c\u5fc5\u987b\u4e25\u683c\u6309\u7167\u7ed3\u679c\u4e2d\u7684\u8d70\u5411\u6765\u5199\u4f5c\uff0c\u4e0d\u5f97\u81ea\u884c\u6539\u53d8\u5de5\u5177\u6267\u884c\u7ed3\u679c";
   }
 
-  const recentText = ctx.recentNarratives
-    .map((t) => `[\u8f6e${t.turnNum}] \u7528\u6237: ${t.user}\n[\u8f6e${t.turnNum}] AI: ${t.assistant}`)
-    .join("\n\n");
+  const formatTurn = (t) => {
+    if (!t.user) {
+      return `[\u8f6e${t.turnNum}] AI: ${t.assistant}`;
+    }
+    return `[\u8f6e${t.turnNum}] \u7528\u6237: ${t.user}\n[\u8f6e${t.turnNum}] AI: ${t.assistant}`;
+  };
+  const recentText = ctx.recentNarratives.map(formatTurn).join("\n\n");
 
   let userContent = "";
 
@@ -41,10 +45,6 @@ export async function runWritingAgent(ctx) {
   if (ctx.userPersona) {
     if (userContent) userContent += "\n\n";
     userContent += `<user_persona>\n${ctx.userPersona}\n</user_persona>`;
-  }
-
-  if (ctx.openingNarrative) {
-    userContent += `\n\n<opening_narrative>\n${ctx.openingNarrative}\n</opening_narrative>`;
   }
 
   if (userContent) userContent += "\n\n";
@@ -94,9 +94,13 @@ export async function runMergedWritingAgent(ctx) {
   if (systemContent) systemContent += "\n\n";
   systemContent += MERGED_WRITING_SYSTEM_SUFFIX;
 
-  const recentText = ctx.recentTurns
-    .map((t) => `[\u8f6e${t.turnNum}] \u7528\u6237: ${t.user}\n[\u8f6e${t.turnNum}] AI: ${t.assistant}`)
-    .join("\n\n");
+  const formatTurn = (t) => {
+    if (!t.user) {
+      return `[\u8f6e${t.turnNum}] AI: ${t.assistant}`;
+    }
+    return `[\u8f6e${t.turnNum}] \u7528\u6237: ${t.user}\n[\u8f6e${t.turnNum}] AI: ${t.assistant}`;
+  };
+  const recentText = ctx.recentTurns.map(formatTurn).join("\n\n");
 
   let userContent = "";
 
@@ -116,10 +120,6 @@ export async function runMergedWritingAgent(ctx) {
 
   if (userContent) userContent += "\n\n";
   userContent += `<story_summary>\n${ctx.storySummaries}\n</story_summary>`;
-
-  if (ctx.openingNarrative) {
-    userContent += `\n\n<opening_narrative>\n${ctx.openingNarrative}\n</opening_narrative>`;
-  }
 
   userContent += `\n\n<recent_turns>\n${recentText}\n</recent_turns>`;
 

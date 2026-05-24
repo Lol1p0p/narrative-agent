@@ -16,7 +16,7 @@ export async function runExtractionAgent(ctx) {
 
 export async function runMergedAnalysisAgent(ctx) {
   const eventsText = ctx.events
-    .map((e) => `- [${e.type}] ${e.summary || "\u65e0\u63cf\u8ff0"} ${e.detail ? "(" + e.detail + ")" : ""}`)
+    .map((e) => `- [${e.type}] ${e.summary || "无描述"} ${e.detail ? "(" + e.detail + ")" : ""}`)
     .join("\n");
 
   let systemContent = MERGED_ANALYSIS_SYSTEM;
@@ -25,10 +25,8 @@ export async function runMergedAnalysisAgent(ctx) {
     systemContent += "\n\n" + ctx.postPipelineToolSuffix;
   }
 
-  let userContent = "";
-  if (ctx.openingNarrative) {
-    userContent += `<opening_narrative>\n${ctx.openingNarrative}\n</opening_narrative>\n\n`;
-  }
+  const roundNum = ctx.turnId ? parseInt(String(ctx.turnId).replace(/^turn_/, ""), 10) : null;
+  let userContent = roundNum != null ? `【当前轮次：第${roundNum}轮（摘要条目必须使用此编号）】\n\n` : "";
   userContent += `<user_input>\n${ctx.userInput}\n</user_input>\n\n`;
   userContent += `<narrative_output>\n${ctx.narrativeText}\n</narrative_output>\n\n`;
   userContent += `<events_extracted>\n${eventsText}\n</events_extracted>\n\n`;
@@ -36,7 +34,7 @@ export async function runMergedAnalysisAgent(ctx) {
   if (ctx.changedPatches && ctx.changedPatches.trim()) {
     userContent += `<world_state_changes>\n${ctx.changedPatches}\n</world_state_changes>\n\n`;
   }
-  userContent += "\u8bf7\u8f93\u51fa\u5206\u6790\u7ed3\u679c\u3002";
+  userContent += "请输出分析结果。";
 
   const messages = [
     { role: "system", content: systemContent },
@@ -48,7 +46,7 @@ export async function runMergedAnalysisAgent(ctx) {
 
 export async function runMergedAnalysisAntiHallucination(ctx) {
   const eventsText = ctx.events
-    .map((e) => `- [${e.type}] ${e.summary || "\u65e0\u63cf\u8ff0"} ${e.detail ? "(" + e.detail + ")" : ""}`)
+    .map((e) => `- [${e.type}] ${e.summary || "无描述"} ${e.detail ? "(" + e.detail + ")" : ""}`)
     .join("\n");
 
   let systemContent = SHARED_ANALYSIS_PREFIX;
@@ -56,10 +54,8 @@ export async function runMergedAnalysisAntiHallucination(ctx) {
     systemContent += "\n\n" + ctx.postPipelineToolSuffix;
   }
 
-  let userContent = "";
-  if (ctx.openingNarrative) {
-    userContent += `<opening_narrative>\n${ctx.openingNarrative}\n</opening_narrative>\n\n`;
-  }
+  const roundNum = ctx.turnId ? parseInt(String(ctx.turnId).replace(/^turn_/, ""), 10) : null;
+  let userContent = roundNum != null ? `【当前轮次：第${roundNum}轮（摘要条目必须使用此编号）】\n\n` : "";
   userContent += `<user_input>\n${ctx.userInput}\n</user_input>\n\n`;
   userContent += `<narrative_text>\n${ctx.narrativeText}\n</narrative_text>\n\n`;
   userContent += `<events_extracted>\n${eventsText}\n</events_extracted>\n\n`;
@@ -67,7 +63,7 @@ export async function runMergedAnalysisAntiHallucination(ctx) {
   if (ctx.changedPatches && ctx.changedPatches.trim()) {
     userContent += `<world_state_changes>\n${ctx.changedPatches}\n</world_state_changes>\n\n`;
   }
-  userContent += "\u8bf7\u8f93\u51fa\u5206\u6790\u7ed3\u679c\u3002";
+  userContent += "请输出分析结果。";
 
   const messages = [
     { role: "system", content: systemContent },

@@ -55,10 +55,10 @@ export class ContextRouter {
     };
   }
 
-  buildMergedAnalysisContext(narrativeText, userInput, turnId, stateSummary, openingNarrative = "") {
+  buildMergedAnalysisContext(narrativeText, userInput, turnId, stateSummary) {
     return {
+      turnId: turnId || "",
       events: [],
-      openingNarrative: openingNarrative || "",
       userInput,
       narrativeText,
       stateSummary: stateSummary || this.stateManager.getSummary(),

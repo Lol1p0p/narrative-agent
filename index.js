@@ -46,6 +46,25 @@ function installChatChangeHandler() {
   if (!ctx) return;
   ctx.eventSource.on(ctx.eventTypes.CHAT_CHANGED, async () => {
     if (!orchestrator || !bridge) return;
+
+    bridge._aborted = true;
+
+    if (orchestrator._isRunning) {
+      console.log("[NarrativeAgent] Chat changed, 正在终止运行中的pipeline...");
+      orchestrator._shouldCancel = true;
+      const startTime = Date.now();
+      while (orchestrator._isRunning && Date.now() - startTime < 30000) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+      if (orchestrator._isRunning) {
+        console.warn("[NarrativeAgent] Pipeline终止超时，强制继续切换");
+        orchestrator._isRunning = false;
+        orchestrator._shouldCancel = true;
+      } else {
+        console.log("[NarrativeAgent] Pipeline已终止");
+      }
+    }
+
     console.log("[NarrativeAgent] Chat changed, saving current state for:", currentChatId);
     persistState(orchestrator, config, currentChatId);
 
