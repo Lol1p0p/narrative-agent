@@ -131,6 +131,16 @@ async function registerSettingsPane() {
       console.log("[NarrativeAgent] 并行处理切换为:", config.pipeline.parallelExecutionEnabled);
     });
 
+    $html.find("#na_text_recall").prop("checked", config.pipeline?.enableTextRecall === true);
+    $html.find("#na_text_recall").on("change", function () {
+      if (!config.pipeline) config.pipeline = {};
+      config.pipeline.enableTextRecall = $(this).prop("checked");
+      if (orchestrator) orchestrator.config = config;
+      saveConfig(config);
+      persistState(orchestrator, config, currentChatId);
+      console.log("[NarrativeAgent] 原文召回切换为:", config.pipeline.enableTextRecall);
+    });
+
     $html.find("#na_import_data").on("click", function () {
       const input = document.createElement("input");
       input.type = "file";
