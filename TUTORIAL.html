@@ -630,8 +630,56 @@
     <tr><td><code>function.parameters</code></td><td>是</td><td>JSON Schema，无参时 properties 为空对象</td></tr>
     <tr><td><code>context</code></td><td>是</td><td>字符串数组，声明需要的上下文组分(见下方)</td></tr>
     <tr><td><code>system_prompt</code></td><td>是</td><td>工具的 system message，定义 LLM 角色、输出格式和约束规则</td></tr>
+    <tr><td><code>output_tag</code></td><td>否</td><td>输出所用的 XML 标签名，如 <code>"state_panel"</code>。声明后插件会回读前几轮该标签的内容注入 tool 上下文</td></tr>
+    <tr><td><code>tag_lookback</code></td><td>否</td><td>回看轮数，如 <code>3</code>。仅在声明 <code>output_tag</code> 时生效，默认 0（不回读）</td></tr>
   </tbody>
 </table>
+
+<h4 id="441-工具输出回读">4.4.1 工具输出回读（tag_lookback）</h4>
+<p>post_pipeline 工具的 LLM 输出被拼接到 chat 末尾对用户可见，但插件原有机制无法让工具在后续轮次中看到自己之前的输出。通过 <code>output_tag</code> 和 <code>tag_lookback</code> 即可实现跨轮回顾：</p>
+
+<pre><code>{
+  "type": "llm",
+  "trigger": "post_pipeline",
+  "function": { "name": "state_panel", ... },
+  "context": ["narrative_text", "state_summary"],
+  "system_prompt": "... 用 &lt;state_panel&gt;...&lt;/state_panel&gt; 包裹输出结果。",
+  "output_tag": "state_panel",
+  "tag_lookback": 3
+}</code></pre>
+
+<p>执行时，插件根据当前轮次 <code>m</code> 和 <code>tag_lookback</code> 计算目标轮次数组 <code>[m-3, m-2, m-1]</code>，从 <code>ctx.chat</code> 的对应消息中提取 <code>&lt;state_panel&gt;...&lt;/state_panel&gt;</code> 内容，拼入 tool 的 LLM 上下文：</p>
+
+<pre><code>
+&lt;state_summary&gt;
+...
+&lt;/state_summary&gt;
+
+&lt;narrative_text&gt;
+...
+&lt;/narrative_text&gt;
+
+&lt;tool_history&gt;
+&lt;state_panel&gt;
+--- 3 轮前 ---
+...第 m-3 轮的 state_panel 输出...
+--- 2 轮前 ---
+...第 m-2 轮的 state_panel 输出...
+--- 1 轮前 ---
+...第 m-1 轮的 state_panel 输出...
+&lt;/state_panel&gt;
+&lt;/tool_history&gt;
+</code></pre>
+
+<p><strong>要点</strong>：</p>
+<ul>
+  <li><strong>仅 tool 自身可见</strong>：<code>&lt;tool_history&gt;</code> 只注入 tool 的 LLM 调用上下文，不会暴露给规划、写作、分析等 Agent</li>
+  <li><strong>范围不含当前轮</strong>：回看 <code>[m-n, m-1]</code>，不包含第 m 轮（本轮 tool 输出尚未生成）</li>
+  <li><strong>标题标签可随输出内容变化</strong>：<code>output_tag</code> 的标签是系统提示自由指定的，可随时更改</li>
+  <li><strong>标签名可任意指定</strong>：<code>output_tag</code> 不仅限于回读，对应的是使用操作标签捕获的前文信息，世界书作者可以自定义回顾机制</li>
+  <li><strong>不声明则无行为</strong>：不声明 <code>output_tag</code> 或不设 <code>tag_lookback</code> 时完全向后兼容</li>
+  <li><strong>切换聊天 / 重新生成 / 删除消息均正确</strong>：插件基于绝对轮次号定位消息，不受 relay 占位符或消息顺序变化的影响</li>
+</ul>
 
 <p><strong>可用 context 值</strong>：</p>
 <table>

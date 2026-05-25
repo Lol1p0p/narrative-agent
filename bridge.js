@@ -140,7 +140,7 @@ export class SillyTavernBridge {
         }
       });
 
-      const result = await this.orchestrator.pipeline(userInput, isRegeneration);
+      const result = await this.orchestrator.pipeline(userInput, isRegeneration, chat);
 
       if (lastMsg && !lastMsg.is_user) {
         lastMsg.mes = result.finalOutput || result.narrative;

@@ -289,6 +289,15 @@ n 和 m 控制分段稳定前缀窗口：窗口从 n 轮开始生长，达到 n+
 | `code` | 代码层确定性执行    | 内置 `roll_dice` 或自定义 JS 代码（通过 `code` 字段定义） |
 | `llm`  | 调用 LLM 生成内容 | 通过 name 区分用途，同名按 priority 排序              |
 
+**llm 工具可选字段**（post_pipeline 专用）：
+
+| 字段            | 类型   | 说明                                                    |
+| ------------- | ---- | ----------------------------------------------------- |
+| `output_tag`  | 字符串  | tool 输出所用的 XML 标签名，如 `"state_panel"`。声明后插件会回读前几轮该标签的内容 |
+| `tag_lookback` | 数字   | 回看轮数，如 `3` 表示回看最近 3 轮的输出。仅在声明 `output_tag` 时生效            |
+
+当 tool 声明 `output_tag` 和 `tag_lookback` 后，插件从 `ctx.chat` 中提取最近 `tag_lookback` 轮的 `<output_tag>...</output_tag>` 内容，拼接为 `<tool_history>` 块注入 tool 自身的 LLM 上下文。这使 post_pipeline 工具能够回顾自己之前的输出，实现跨轮连贯性（例如 state_panel 延续上一轮的面板状态）。此内容仅 tool 自身可见，不会暴露给规划、写作、分析等 Agent。
+
 **自定义 code 工具**：在 JSON content 中提供 `code` 字段，内容为 JavaScript 函数体。代码接收两个变量：
 
 | 变量       | 说明                                     |

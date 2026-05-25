@@ -102,6 +102,8 @@ export function buildToolUserMessage(tool, availableContext) {
   const requested = tool.context || [];
   const ordered = CANONICAL_CONTEXT_ORDER.filter(key => requested.includes(key));
 
+  console.log(`[NA:tool_history] buildToolUserMessage: tool="${tool.function.name}" context=[${requested.join(",")}] tool_history存在=${!!(availableContext.tool_history && availableContext.tool_history[tool.function.name])}`);
+
   const parts = [];
   for (const key of ordered) {
     const content = availableContext[key];
@@ -114,9 +116,17 @@ export function buildToolUserMessage(tool, availableContext) {
     parts.push("（无可用上下文）");
   }
 
+  const history = availableContext.tool_history && availableContext.tool_history[tool.function.name];
+  if (history) {
+    console.log(`[NA:tool_history] buildToolUserMessage: tool="${tool.function.name}" 追加 <tool_history>, 长度=${history.length}`);
+    parts.push(`<tool_history>\n${history}\n</tool_history>`);
+  }
+
   parts.push(`请根据上述内容执行工具 ${tool.function.name}。`);
 
-  return parts.join("\n\n");
+  const finalMsg = parts.join("\n\n");
+  console.log(`[NA:tool_history] buildToolUserMessage: tool="${tool.function.name}" 最终user消息长度=${finalMsg.length}, 首200字="${finalMsg.substring(0, 200)}"`);
+  return finalMsg;
 }
 
 export class Orchestrator {
@@ -205,9 +215,10 @@ export class Orchestrator {
     }
   }
 
-  async pipeline(userInput, isRegeneration = false) {
+  async pipeline(userInput, isRegeneration = false, chat = null) {
     if (this._isRunning) throw new Error("Pipeline already running");
     this._isRunning = true;
+    this._chat = chat;
 
     let turnId;
     if (isRegeneration) {
@@ -319,7 +330,7 @@ export class Orchestrator {
       console.log("[NarrativeAgent] Phase 1.5: Tool Execution, count:", writingGuide.tool_calls.length);
       this._reportProgress("正在调用工具...");
 
-      const availableContext = await this._buildAvailableContext(sharedWorld, userInput, writingGuide);
+      const availableContext = await this._buildAvailableContext(sharedWorld, userInput, writingGuide, "", [], turnId);
 
       for (const tc of writingGuide.tool_calls) {
         const toolDef = planningTools.find(t => t.function.name === tc.tool);
@@ -389,7 +400,7 @@ export class Orchestrator {
       this._cancelCheck();
       console.log("[NarrativeAgent] Phase 3+4 (parallel): Analysis + independent tools, independent:", independent.length, "dependent:", dependent.length);
 
-      const preAnalysisContext = await this._buildAvailableContext(sharedWorld, userInput, writingGuide, narrativeText);
+      const preAnalysisContext = await this._buildAvailableContext(sharedWorld, userInput, writingGuide, narrativeText, independent, turnId);
 
       const [analysisResult] = await Promise.all([
         (async () => {
@@ -416,7 +427,7 @@ export class Orchestrator {
 
       if (dependent.length > 0) {
         console.log("[NarrativeAgent] Phase 4 (dependent): Post-pipeline tools, count:", dependent.length);
-        const postAnalysisContext = await this._buildAvailableContext(sharedWorld, userInput, writingGuide, narrativeText);
+        const postAnalysisContext = await this._buildAvailableContext(sharedWorld, userInput, writingGuide, narrativeText, dependent, turnId);
         await this._runPostPipelineToolsGroup(dependent, postAnalysisContext, llmToolOutputs);
       }
     } else {
@@ -441,7 +452,7 @@ export class Orchestrator {
 
       if (postPipelineTools.length > 0) {
         console.log("[NarrativeAgent] Phase 4: Post-pipeline tools, count:", postPipelineTools.length);
-        const availableContext = await this._buildAvailableContext(sharedWorld, userInput, writingGuide, narrativeText);
+        const availableContext = await this._buildAvailableContext(sharedWorld, userInput, writingGuide, narrativeText, postPipelineTools, turnId);
         await this._runPostPipelineToolsGroup(postPipelineTools, availableContext, llmToolOutputs);
       }
     }
@@ -511,8 +522,43 @@ export class Orchestrator {
     }
   }
 
-  async _buildAvailableContext(sharedWorld, userInput, writingGuide, narrativeText = "") {
+  async _buildAvailableContext(sharedWorld, userInput, writingGuide, narrativeText = "", tools = [], turnId = "") {
     const isPostPipeline = narrativeText !== "";
+    const toolHistory = {};
+
+    if (isPostPipeline && Array.isArray(tools) && tools.length > 0 && this._chat) {
+      const currentTurn = parseInt(String(turnId).replace("turn_", ""), 10);
+      console.log(`[NA:tool_history] _buildAvailableContext: isPostPipeline=true, tools总数=${tools.length}, turnId=${turnId}, currentTurn=${currentTurn}, _chat长度=${this._chat.length}, _chatTurnHistory长度=${this._chatTurnHistory.length}`);
+      if (!isNaN(currentTurn) && currentTurn > 0) {
+        for (const tool of tools) {
+          const tag = tool.outputTag;
+          const lookback = tool.tagLookback;
+          console.log(`[NA:tool_history] tool="${tool.function.name}" outputTag="${tag}" tagLookback=${lookback}`);
+          if (tag && lookback > 0) {
+            const startTurn = currentTurn - lookback;
+            const targetTurns = [];
+            for (let tn = startTurn; tn < currentTurn; tn++) {
+              if (tn >= 0) targetTurns.push(tn);
+            }
+            console.log(`[NA:tool_history] tool="${tool.function.name}" targetTurns=[${targetTurns.join(",")}]`);
+            if (targetTurns.length > 0) {
+              const content = this._extractTaggedContentFromChat(tag, targetTurns);
+              console.log(`[NA:tool_history] tool="${tool.function.name}" 提取结果: ${content ? "有内容(" + content.length + "字符)" : "空"}`);
+              if (content) {
+                toolHistory[tool.function.name] = content;
+              }
+            } else {
+              console.log(`[NA:tool_history] tool="${tool.function.name}" targetTurns为空, 跳过`);
+            }
+          } else {
+            console.log(`[NA:tool_history] tool="${tool.function.name}" 未声明outputTag或tagLookback<=0, 跳过`);
+          }
+        }
+      } else {
+        console.log(`[NA:tool_history] currentTurn无效 (isNaN=${isNaN(currentTurn)}), 跳过工具历史提取`);
+      }
+    }
+
     return {
       world_full: sharedWorld || "",
       story_summary: this.summaryStore.getAllSummaries(),
@@ -524,6 +570,7 @@ export class Orchestrator {
       user_input: userInput || "",
       dice_results: "",
       known_context: JSON.stringify(this.stateManager.getKnownContext()),
+      tool_history: toolHistory,
     };
   }
 
@@ -846,7 +893,7 @@ export class Orchestrator {
     const llmToolOutputs = [];
     if (postPipelineTools.length > 0) {
       console.log("[NarrativeAgent] Phase 4: Post-pipeline tools, count:", postPipelineTools.length);
-      const availableContext = await this._buildAvailableContext(sharedWorld, userInput, mergedGuide, narrativeText);
+      const availableContext = await this._buildAvailableContext(sharedWorld, userInput, mergedGuide, narrativeText, postPipelineTools, turnId);
       await this._runPostPipelineToolsGroup(postPipelineTools, availableContext, llmToolOutputs);
     }
 
@@ -907,6 +954,65 @@ export class Orchestrator {
     return inner;
   }
 
+  _extractTaggedContentFromChat(tag, targetTurns) {
+    if (!tag || !Array.isArray(targetTurns) || targetTurns.length === 0) return "";
+    if (!this._chat || !Array.isArray(this._chat)) {
+      console.log(`[NA:tool_history] _extractTaggedContentFromChat: this._chat 无效, 返回空`);
+      return "";
+    }
+
+    const turnMap = new Map();
+    for (const t of this._chatTurnHistory) {
+      if (t.chatIndex != null) {
+        turnMap.set(t.turnNum, t.chatIndex);
+      }
+    }
+    console.log(`[NA:tool_history] _extractTaggedContentFromChat: tag="${tag}" targetTurns=[${targetTurns.join(",")}] turnMap大小=${turnMap.size} turnMap entries=[${[...turnMap.entries()].map(([tn, ci]) => tn + "->chat[" + ci + "]").join(", ")}]`);
+
+    const parts = [];
+    const sorted = [...targetTurns].sort((a, b) => a - b);
+
+    for (const turnNum of sorted) {
+      const idx = turnMap.get(turnNum);
+      console.log(`[NA:tool_history] turnNum=${turnNum} chatIndex=${idx} chatLength=${this._chat.length}`);
+      if (idx == null || idx >= this._chat.length) {
+        console.log(`[NA:tool_history] turnNum=${turnNum} idx无效(idx=${idx})或越界, 跳过`);
+        continue;
+      }
+      const msg = this._chat[idx];
+      const text = (msg && (msg.mes || msg.content)) || "";
+      if (!text) {
+        console.log(`[NA:tool_history] turnNum=${turnNum} chat[${idx}] 无文本内容, 跳过`);
+        continue;
+      }
+
+      console.log(`[NA:tool_history] turnNum=${turnNum} chat[${idx}] 文本长度=${text.length}, 首100字="${text.substring(0, 100)}"`);
+      const regex = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, "gi");
+      let match;
+      let matchCount = 0;
+      while ((match = regex.exec(text)) !== null) {
+        if (match[1].trim()) {
+          parts.push(match[1].trim());
+          matchCount++;
+        }
+      }
+      console.log(`[NA:tool_history] turnNum=${turnNum} <${tag}> 匹配数=${matchCount}`);
+    }
+
+    console.log(`[NA:tool_history] _extractTaggedContentFromChat: 总匹配数=${parts.length}`);
+    if (parts.length === 0) return "";
+
+    if (parts.length === 1) {
+      return `<${tag}>\n${parts[0]}\n</${tag}>`;
+    }
+
+    const labeled = parts.map((p, i) => {
+      const ago = parts.length - i;
+      return `--- ${ago} 轮前 ---\n${p}`;
+    });
+    return `<${tag}>\n${labeled.join("\n\n")}\n</${tag}>`;
+  }
+
   _extractTurnHistoryFromChat(chat) {
     if (!chat || chat.length === 0) {
       console.log("[NA:extract] chat 为空或无元素");
@@ -948,7 +1054,7 @@ export class Orchestrator {
             const cleaned = this._cleanContextContent(contextMatch[1]);
             console.log(`[NA:extract] [${msgIdx}] 首轮前消息中匹配到<context>, 原始长度: ${contextMatch[1].length}, 清理后长度: ${cleaned.length}`);
             if (cleaned) {
-              turns.push({ userInput: null, narrativeText: cleaned, turnNum: 0 });
+              turns.push({ userInput: null, narrativeText: cleaned, turnNum: 0, chatIndex: msgIdx - 1 });
               console.log(`[NA:extract] turn0 已创建, narrativeText 长度: ${cleaned.length}, 预览: ${cleaned.substring(0, 100)}`);
             } else {
               console.log(`[NA:extract] [${msgIdx}] <context> 清理后为空, 跳过`);
@@ -968,6 +1074,7 @@ export class Orchestrator {
           turns.push({
             userInput: pendingUserInput || "",
             narrativeText: narrativeText.trim(),
+            chatIndex: msgIdx - 1,
           });
           console.log(`[NA:extract] [${msgIdx}] 创建对话轮次, turnNum=${nextTurn}, userInput长度=${(pendingUserInput || "").length}, narrative长度=${narrativeText.trim().length}`);
         }

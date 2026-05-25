@@ -328,6 +328,8 @@ export class WorldInfoResolver {
         context: parsed.context || [],
         system_prompt: prompt,
         userCode,
+        outputTag: parsed.output_tag || "",
+        tagLookback: typeof parsed.tag_lookback === "number" ? parsed.tag_lookback : 0,
       };
     } catch (e) {
       console.warn(`[NA] [TOOL:${funcName}] \u6761\u76ee content JSON \u89e3\u6790\u5931\u8d25:`, e.message, "content preview:", (entry.content || "").substring(0, 200));
