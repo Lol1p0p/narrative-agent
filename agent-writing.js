@@ -54,6 +54,10 @@ export async function runWritingAgent(ctx) {
     userContent += "\n\n<worldinfo3>\n" + ctx.selectiveEntries.join("\n\n") + "\n</worldinfo3>";
   }
 
+  if (ctx.textRecall) {
+    userContent += "\n\n<text_recall>\n" + ctx.textRecall + "\n</text_recall>";
+  }
+
   let guideBlock = "<writing_guide>\n\u53d9\u4e8b\u65b9\u5411\uff1a" + (guide.narrative_direction || "\uff08\u65e0\u7279\u5b9a\u65b9\u5411\uff0c\u5ef6\u7eed\u5f53\u524d\u53d9\u4e8b\uff09");
   if (guide.scene_setting) {
     guideBlock += "\n\u573a\u666f\u8bbe\u7f6e\uff1a" + guide.scene_setting;
@@ -125,6 +129,10 @@ export async function runMergedWritingAgent(ctx) {
 
   if (ctx.selectiveEntries && ctx.selectiveEntries.length > 0) {
     userContent += "\n\n<worldinfo3>\n" + ctx.selectiveEntries.join("\n\n") + "\n</worldinfo3>";
+  }
+
+  if (ctx.textRecall) {
+    userContent += "\n\n<text_recall>\n" + ctx.textRecall + "\n</text_recall>";
   }
 
   userContent += `\n\n<state_summary>\n${ctx.stateSummary}\n</state_summary>`;

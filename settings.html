@@ -48,6 +48,15 @@
 
             <hr>
 
+            <h4>原文召回</h4>
+            <label class="checkbox_label">
+                <input type="checkbox" id="na_text_recall" name="na_text_recall">
+                <span>启用原文召回</span>
+            </label>
+            <small>开启后，规划 Agent 可在输出中声明需要召回的轮次号，插件从历史对话中提取对应原文并注入写作 Agent 的 prompt。启用后强制分离规划与写作 Agent（即使无 planning 工具也不回退到合并输出模式）。</small>
+
+            <hr>
+
             <div style="margin-top: 8px;">
                 <input type="button" class="menu_button" id="na_reset_state" value="重置状态">
                 <input type="button" class="menu_button" id="na_refresh_state" value="刷新显示">

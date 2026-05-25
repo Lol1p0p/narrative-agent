@@ -13,6 +13,7 @@ export function parsePlanningOutput(rawText) {
       pacing: ["\u5feb", "\u4e2d", "\u6162"].includes(parsed.pacing) ? parsed.pacing : "\u4e2d",
       continuity_notes: Array.isArray(parsed.continuity_notes) ? parsed.continuity_notes : [],
       tool_calls: Array.isArray(parsed.tool_calls) ? parsed.tool_calls : [],
+      text_recall: Array.isArray(parsed.text_recall) ? parsed.text_recall.filter(v => typeof v === "number" && v >= 0) : [],
     };
   } catch (e) {
     console.warn("[NA] parsePlanningOutput: JSON\u89e3\u6790\u5931\u8d25,", e.message, "rawText\u524d100\u5b57:", rawText?.substring(0, 100));
@@ -21,7 +22,7 @@ export function parsePlanningOutput(rawText) {
 }
 
 export function getDefaultPlan() {
-  return { narrative_direction: "", key_points: [], tone: "\u4e2d", pacing: "\u4e2d", continuity_notes: [], tool_calls: [] };
+  return { narrative_direction: "", key_points: [], tone: "\u4e2d", pacing: "\u4e2d", continuity_notes: [], tool_calls: [], text_recall: [] };
 }
 
 export function parseExtractionOutput(rawText) {

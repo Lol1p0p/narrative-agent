@@ -11,6 +11,7 @@ export const DEFAULT_CONFIG = {
     recentTurnsForWriting: 3,
     writingGrowthMargin: 4,
     parallelExecutionEnabled: false,
+    enableTextRecall: false,
   },
   agents: {
     planning:       {},
@@ -53,6 +54,7 @@ export const PLANNING_SYSTEM_SUFFIX = `你是叙事规划引擎。根据全局�
 - tool_calls: 需要调用的工具列表（0-5个）。每个工具调用包含：
     tool: 工具名称（必须与可用工具列表中的名称完全一致）
     params: 工具参数对象（必须符合工具的参数定义）
+- text_recall: 需要召回原文的轮次号列表（0-5个整数）。当需要参考某轮对话的具体内容（如角色说过的原话、某个事件的确切描述）时声明对应轮次号。不声明或不需要时为空数组 []
 
 规则：
 - 只输出 JSON，不输出其他文字

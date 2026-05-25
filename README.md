@@ -38,6 +38,7 @@ SillyTavern 扩展，通过多个**上下文隔离**的 Agent 处理用户输入
 - **世界书条目分类注入**：条目根据位置（system / before_char / after_char）和激活策略（永久 / 关键词）自动路由到对应 Agent 的正确 message 位置
 - **分段稳定前缀缓存**：对话历史窗口采用 n+m 分段生长策略，历史对话部分的token 级缓存命中率达 72%+，显著降低 API 使用成本
 - **零开销默认**：无工具时自动切换为合并输出模式（规划+写作二合一，单次 LLM 调用），比默认模式减少 1 次 API 请求
+- **原文召回**：规划 Agent 可声明需要参考的历史轮次，插件从对话中提取对应原文注入写作 Agent。启用后强制分离规划与写作 Agent
 - **对话级状态隔离**：每个对话独立维护游戏状态和摘要，切换对话自动保存/恢复
 
 ## 安装
@@ -105,22 +106,28 @@ GENERATION_ENDED — 执行完整 Pipeline
   │   user:   {writingUserPreset} + {beforeCharEntries} + 用户角色 + 故事摘要 + 最近叙事片段 + {selectiveEntries} + 游戏状态 + 用户输入
   │   ※ 跳过独立的规划和写作阶段，直接输出叙事文本
   │
-  ├─ Agent 1: 规划 (Planning) ──────→ 写作指导 JSON + tool_calls[]
+  ├─ Agent 1: 规划 (Planning) ──────→ 写作指导 JSON + tool_calls[] + text_recall[]
   │   system: {presetContext} + {systemEntries} + PLANNING_SUFFIX + {toolList}
   │   user:   故事摘要 + {beforeCharEntries} + 用户角色 + 最近叙事片段 + {selectiveEntries} + 游戏状态 + 用户输入
   │   ※ 检测到 [TOOL:xxx] 时自动注入工具声明列表
-  │   ※ 仅当有 planning 工具时执行，否则启动合并写作模式
+  │   ※ 仅当有 planning 工具时执行；开启原文召回后强制执行
+  │   ※ text_recall: 声明需要召回原文的轮次号列表
   │
   ├─ Planning 工具执行 ──────────────→ codeToolResults / llmToolOutputs
   │   ※ 仅当 planning agent 返回 tool_calls[] 时执行
   │   ※ code 工具：代码层确定性执行，不调用 LLM
   │   ※ llm 工具（trigger=planning）：调用 LLM，结果传递给写作 agent 但不显示给用户
   │
+  ├─ ★ 原文召回 ──────────────────────→ 从 chat 历史提取指定轮次原文
+  │   ※ 仅当规划 agent 返回 text_recall[] 且启用原文召回时执行
+  │   ※ 通过 turn→chatIndex 映射定位消息，提取 <context> 正文
+  │
   ├─ Agent 2: 写作 (Writing) ───────→ 叙事正文
   │   system: {writingSystemPreset} + {systemEntries} + WRITING_SUFFIX
-  │   user:   {writingUserPreset} + 用户角色 + 最近叙事片段 + {selectiveEntries} + 写作指导 + [工具结果] + 用户输入
+  │   user:   {writingUserPreset} + 用户角色 + 最近叙事片段 + {selectiveEntries} + {textRecall} + 写作指导 + [工具结果] + 用户输入
   │   ※ system 与规划 agent 共享 systemEntries
   │   ※ writingSystemPreset / writingUserPreset 由 extractPresetContext() 分拆
+  │   ※ textRecall: <text_recall>[第n轮] 原文</text_recall>，插入 worldinfo3 之后
   │
   ├─ Agent 3: 合并分析 (Merged Analysis) ─→ 事件 JSON + 摘要条目
   │   system: SHARED_ANALYSIS_PREFIX + 事件提取任务 + 压缩任务
@@ -182,6 +189,7 @@ GENERATION_ENDED — 执行完整 Pipeline
     recentTurnsForWriting: 3,   // 写作 Agent 最小窗口轮数 (n)
     writingGrowthMargin: 4,     // 写作 Agent 生长缓冲区 (m)
     parallelExecutionEnabled: false, // 启用并行处理（不依赖分析结果的 post_pipeline 工具与合并分析并行）
+    enableTextRecall: false,       // 启用原文召回（规划 agent 可声明需要回顾的历史轮次，强制分离规划与写作）
   },
   agents: {
     planning:       {},
@@ -337,10 +345,10 @@ n 和 m 控制分段稳定前缀窗口：窗口从 n 轮开始生长，达到 n+
 
 | Agent | 职责                                         | 输出格式                                                                                   |
 | ----- | ------------------------------------------ | -------------------------------------------------------------------------------------- |
-| 规划    | 综合全局信息，输出结构化写作指导。检测到工具时额外输出 `tool_calls[]` | JSON (narrative\_direction, key\_points, tone, pacing, continuity\_notes, tool\_calls) |
-| 写作    | 根据写作指导和上下文生成叙事正文                           | 纯文本                                                                                    |
+| 规划    | 综合全局信息，输出结构化写作指导。检测到工具时额外输出 `tool_calls[]`。原文召回开启时额外输出 `text_recall[]` | JSON (narrative\_direction, key\_points, tone, pacing, continuity\_notes, tool\_calls, text\_recall) |
+| 写作    | 根据写作指导和上下文生成叙事正文。原文召回开启时额外接收 `<text_recall>` 原文块  | 纯文本                                                                                    |
 | 合并分析  | 从叙事正文提取结构化事件 + 将本轮压缩为摘要条目（单次 LLM 调用完成两项任务） | JSON `{events: [...], summary_entries: [...]}`                                         |
-| 合并写作  | 无规划工具时自动启用，融合规划与写作职责，一次性输出叙事正文             | 纯文本（与写作 Agent 输出格式一致）                                                                  |
+| 合并写作  | 无规划工具且原文召回关闭时自动启用，融合规划与写作职责，一次性输出叙事正文             | 纯文本（与写作 Agent 输出格式一致）                                                                  |
 
 ### 合并分析 Agent
 

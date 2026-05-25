@@ -294,7 +294,7 @@ export class Orchestrator {
     const planningTools = allTools.filter(t => t.trigger === "planning");
     const postPipelineTools = allTools.filter(t => t.trigger === "post_pipeline");
 
-    if (planningTools.length === 0) {
+    if (planningTools.length === 0 && !cfg.enableTextRecall) {
       console.log("[NarrativeAgent] 无 planning 工具，切换为合并输出模式");
       this._cancelCheck();
       return await this._mergedPipeline(userInput, turnId);
@@ -365,6 +365,17 @@ export class Orchestrator {
       toolResultsText = formatToolResultsForWriting(codeToolResults);
     }
 
+    let textRecallEntries = null;
+    if (writingGuide.text_recall && writingGuide.text_recall.length > 0) {
+      const rawResults = this._extractRawTagContent("context", writingGuide.text_recall);
+      if (rawResults.length > 0) {
+        textRecallEntries = rawResults.map(r => `[\u7b2c${r.turnNum}\u8f6e]\n${r.content}`).join("\n\n");
+        console.log(`[NA:text_recall] 提取原文: 请求轮次=[${writingGuide.text_recall.join(",")}] 命中=${rawResults.length} 总字符=${textRecallEntries.length}`);
+      } else {
+        console.log(`[NA:text_recall] 提取原文: 请求轮次=[${writingGuide.text_recall.join(",")}] 未命中任何内容`);
+      }
+    }
+
     this._cancelCheck();
 
     console.log("[NarrativeAgent] Phase 2: Writing");
@@ -383,7 +394,8 @@ export class Orchestrator {
       systemEntries, allWorldInfo3,
       writingSystemPreset, writingUserPreset,
       toolResultsText,
-      beforeCharEntries
+      beforeCharEntries,
+      textRecallEntries
     );
     const narrativeText = await runWritingAgent(writingCtx);
     await this.fileManager.save(turnId, "narratives", narrativeText);
@@ -1011,6 +1023,39 @@ export class Orchestrator {
       return `--- ${ago} 轮前 ---\n${p}`;
     });
     return `<${tag}>\n${labeled.join("\n\n")}\n</${tag}>`;
+  }
+
+  _extractRawTagContent(tag, targetTurns) {
+    const results = [];
+    if (!tag || !Array.isArray(targetTurns) || targetTurns.length === 0) return results;
+    if (!this._chat || !Array.isArray(this._chat)) return results;
+
+    const turnMap = new Map();
+    for (const t of this._chatTurnHistory) {
+      if (t.chatIndex != null) {
+        turnMap.set(t.turnNum, t.chatIndex);
+      }
+    }
+
+    const sorted = [...targetTurns].sort((a, b) => a - b);
+
+    for (const turnNum of sorted) {
+      const idx = turnMap.get(turnNum);
+      if (idx == null || idx >= this._chat.length) continue;
+      const msg = this._chat[idx];
+      const text = (msg && (msg.mes || msg.content)) || "";
+      if (!text) continue;
+
+      const regex = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, "gi");
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        if (match[1].trim()) {
+          results.push({ turnNum, content: match[1].trim() });
+        }
+      }
+    }
+
+    return results;
   }
 
   _extractTurnHistoryFromChat(chat) {

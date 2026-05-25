@@ -40,7 +40,7 @@ export class ContextRouter {
     };
   }
 
-  async buildWritingContext(writingGuide, userInput, recentNarratives, systemEntries, selectiveEntries, writingSystemPreset, writingUserPreset, toolResultsText, beforeCharEntries) {
+  async buildWritingContext(writingGuide, userInput, recentNarratives, systemEntries, selectiveEntries, writingSystemPreset, writingUserPreset, toolResultsText, beforeCharEntries, textRecall = null) {
     return {
       userPersona: this.userPersonaReader.getPersonaInfo(),
       writingGuide,
@@ -52,6 +52,7 @@ export class ContextRouter {
       userInput,
       toolResultsText: toolResultsText || "",
       beforeCharEntries: beforeCharEntries || [],
+      textRecall: textRecall || null,
     };
   }
 
