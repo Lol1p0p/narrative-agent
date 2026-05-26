@@ -33,27 +33,75 @@ export function getSTContext() {
   try { return window.SillyTavern?.getContext() ?? null; } catch { return null; }
 }
 
-export function extractPresetContext(chat, formattingSet) {
-  const systemContext = [];
-  let activeModePrompt = "";
+export function extractPresetContext() {
+  const ctx = getSTContext();
+  const systemEntries = [];
+  const userEntries = [];
 
-  for (const msg of chat) {
-    if (msg.role === "system" && msg.content && msg.content.trim()) {
-      const trimmed = msg.content.trim();
-      if (_isEntryExcluded(trimmed, formattingSet)) continue;
-      const cleaned = _stripFormattingContent(trimmed, formattingSet);
-      if (cleaned) systemContext.push(cleaned);
+  try {
+    const settings = ctx?.chatCompletionSettings;
+    const prompts = settings?.prompts;
+    if (Array.isArray(prompts) && prompts.length > 0) {
+      const enabledMap = _buildPromptEnabledMap(settings?.prompt_order);
+      console.log("[NA:preset] prompt_order enabledMap size:", enabledMap.size);
+
+      const CUSTOMIZABLE_IDS = new Set(["nsfw", "jailbreak"]);
+
+      for (const prompt of prompts) {
+        const identifier = prompt?.identifier;
+        if (!identifier) continue;
+        if (!prompt?.role) continue;
+        if (!prompt?.content?.trim()) continue;
+
+        if (CUSTOMIZABLE_IDS.has(identifier)) {
+          // 用户可自定义的条目：nsfw, jailbreak
+        } else if (prompt.system_prompt === true || prompt.marker === true) {
+          console.log(`[NA:preset] 跳过 ST 内置条目: identifier="${identifier}"`);
+          continue;
+        }
+
+        const enabled = enabledMap.has(identifier) ? enabledMap.get(identifier) : true;
+        if (!enabled) {
+          console.log(`[NA:preset] 跳过已禁用: identifier="${identifier}" role="${prompt.role}"`);
+          continue;
+        }
+
+        console.log(`[NA:preset] 使用: identifier="${identifier}" role="${prompt.role}" content长度=${prompt.content.length}`);
+        if (prompt.role === "system") {
+          systemEntries.push(prompt.content.trim());
+        } else {
+          userEntries.push(prompt.content.trim());
+        }
+      }
     }
-    if (msg.role === "user" && msg.content && msg.content.length > 100) {
-      activeModePrompt = msg.content;
-    }
+  } catch (e) {
+    console.warn("[NA:preset] 读取 chatCompletionSettings.prompts 失败:", e.message);
   }
 
-  return {
-    planningContext: systemContext.length > 0 ? systemContext.join("\n\n") : "",
-    writingSystemContext: systemContext.length > 0 ? systemContext.join("\n\n") : "",
-    writingUserContext: activeModePrompt || "",
+  const systemText = systemEntries.join("\n\n");
+  const result = {
+    planningContext: systemText,
+    writingSystemContext: systemText,
+    writingUserContext: userEntries.join("\n\n"),
   };
+  console.log("[NA:preset] 提取完成: systemEntries=", systemEntries.length, "userEntries=", userEntries.length);
+  return result;
+}
+
+function _buildPromptEnabledMap(promptOrder) {
+  const map = new Map();
+  if (!Array.isArray(promptOrder) || promptOrder.length === 0) return map;
+
+  const entry = promptOrder[0];
+  const order = entry?.order;
+  if (!Array.isArray(order)) return map;
+
+  for (const item of order) {
+    if (item?.identifier) {
+      map.set(item.identifier, item.enabled !== false);
+    }
+  }
+  return map;
 }
 
 export function _stripFormattingContent(text, formattingSet) {
@@ -162,4 +210,19 @@ export function getLatestUserInput(chat) {
     if (isUser && text) return text;
   }
   return "";
+}
+
+export function isApiFailure(err) {
+  if (!err) return false;
+  const msg = (err && err.message) || "";
+  if (msg.includes("Pipeline cancelled")) return true;
+  if (msg.includes("网络") || msg.includes("网络错误")) return true;
+  if (msg.includes("fetch") || msg.includes("network") || msg.includes("ECONN")) return true;
+  if (msg.includes("timeout") || msg.includes("ETIMEDOUT") || msg.includes("超时")) return true;
+  if (msg.includes("429") || msg.includes("rate")) return true;
+  if (/\b5\d{2}\b/.test(msg)) return true;
+  if (msg.includes("generateRaw") && msg.includes("空内容")) return true;
+  if (msg.includes("context not available")) return true;
+  if (msg.includes("请求可能被取消") || msg.includes("API错误")) return true;
+  return false;
 }

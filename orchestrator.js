@@ -6,7 +6,7 @@ import { runWritingAgent, runMergedWritingAgent } from "./agent-writing.js";
 import { runMergedAnalysisAgent } from "./agent-analysis.js";
 import { getMvuStateSummary } from "./mvu.js";
 import { rollDice } from "./dice.js";
-import { parseTextToVariables } from "./utils.js";
+import { parseTextToVariables, isApiFailure } from "./utils.js";
 import { DEFAULT_CONFIG, CANONICAL_CONTEXT_ORDER } from "./constants.js";
 
 export class ToolExecutor {
@@ -252,7 +252,9 @@ export class Orchestrator {
         return { narrative: "", formatted: null, events: { applied: 0, rejected: 0 }, writingGuide: {}, finalOutput: "", codeToolResults: [] };
       }
       console.error("[NarrativeAgent] Pipeline error:", error);
-      this._reportProgress("API请求超时或被打断，工作流意外终止！");
+      if (isApiFailure(error)) {
+        this._reportProgress("API请求失败，尝试降级处理...");
+      }
       if (this._chatTurnHistory.length > historyLenBefore) {
         console.warn("[NarrativeAgent] Rolling back turnHistory from failed pipeline (length:", this._chatTurnHistory.length, "->", historyLenBefore, ")");
         this._chatTurnHistory = this._chatTurnHistory.slice(0, historyLenBefore);

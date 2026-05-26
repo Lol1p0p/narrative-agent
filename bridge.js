@@ -1,4 +1,4 @@
-import { getSTContext, extractPresetContext, getLatestUserInput } from "./utils.js";
+import { getSTContext, extractPresetContext, getLatestUserInput, isApiFailure } from "./utils.js";
 import { PLACEHOLDER } from "./constants.js";
 
 export class SillyTavernBridge {
@@ -87,8 +87,7 @@ export class SillyTavernBridge {
     console.log("[NarrativeAgent] 从chat提取轮次:", turns.length);
 
     if (this.orchestrator.config.presetMode === "split") {
-      const formattingSet = this.orchestrator.worldInfoResolver.getFormattingSet();
-      const presetCtx = extractPresetContext(data.chat, formattingSet);
+      const presetCtx = extractPresetContext();
       this.orchestrator.setPresetContext(presetCtx);
       console.log("[NarrativeAgent] 预设上下文已提取, planningContext长度:", presetCtx.planningContext.length, "writingSystemContext长度:", presetCtx.writingSystemContext.length, "writingUserContext长度:", presetCtx.writingUserContext.length);
     } else {
@@ -154,12 +153,25 @@ export class SillyTavernBridge {
       if (typeof ctx.saveChat === "function") await ctx.saveChat();
       console.log("[NarrativeAgent] Pipeline 执行完成, 输出长度:", result.finalOutput.length);
 
+      ctx.eventSource.emit(ctx.eventTypes.MESSAGE_EDITED, chat.length - 1);
+      ctx.eventSource.emit(ctx.eventTypes.MESSAGE_UPDATED, chat.length - 1);
+      ctx.eventSource.emit(ctx.eventTypes.CHARACTER_MESSAGE_RENDERED, chat.length - 1);
+
       for (const cb of this._pipelineCompleteCbs) {
         try { await cb(result); } catch (err) { console.error("[NarrativeAgent] Callback error:", err); }
       }
     } catch (err) {
       console.error("[NarrativeAgent] Pipeline 执行失败:", err);
-      if (lastMsg) { lastMsg.mes = "API请求超时或被打断，工作流意外终止！"; ctx.updateMessageBlock(chat.length - 1, lastMsg); }
+      if (lastMsg) {
+        if (isApiFailure(err)) {
+          lastMsg.mes = "API请求失败或被打断，工作流终止！";
+        } else {
+          lastMsg.mes = "工作流执行异常，请检查控制台日志。";
+        }
+        ctx.updateMessageBlock(chat.length - 1, lastMsg);
+      }
+      try { ctx.eventSource.emit(ctx.eventTypes.MESSAGE_EDITED, chat.length - 1); } catch {}
+      try { ctx.eventSource.emit(ctx.eventTypes.MESSAGE_UPDATED, chat.length - 1); } catch {}
     } finally {
       this.isPipelineRunning = false;
     }
