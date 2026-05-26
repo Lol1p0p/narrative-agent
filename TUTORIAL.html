@@ -859,8 +859,7 @@
 
 <h3 id="83-缓存优化">8.3 缓存优化</h3>
 <ol>
-  <li><strong>constant 条目放 system</strong>：永久激活的 system 条目跨轮不变，完全命中 API prefix cache</li>
-  <li><strong>避免在关键词条目中频繁变更 content</strong>：如果内容变化频繁，考虑拆分为多个更小粒度的条目</li>
+  <li><strong>constant 条目保持稳定</strong>：永久激活条目跨轮不变，将会完全命中 API prefix cache</li>
   <li><strong>预设中的 system 消息保持稳定</strong>：避免在预设中放置每轮变化的动态内容</li>
 </ol>
 
