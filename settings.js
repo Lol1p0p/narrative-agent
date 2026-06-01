@@ -61,12 +61,15 @@ export function persistState(orchestrator, config, currentChatId) {
     if (!ctx || !orchestrator) return;
     const chatId = currentChatId || getConversationId();
     ctx.extensionSettings[EXTENSION_ID] = ctx.extensionSettings[EXTENSION_ID] || {};
-    ctx.extensionSettings[EXTENSION_ID].chatStates = ctx.extensionSettings[EXTENSION_ID].chatStates || {};
-    ctx.extensionSettings[EXTENSION_ID].chatStates[chatId] = {
-      gameState: orchestrator.stateManager.toDict(),
-      summaryStore: orchestrator.summaryStore.toDict(),
-    };
     ctx.extensionSettings[EXTENSION_ID].enabled = config.enabled;
+
+    if (config.enabled) {
+      ctx.extensionSettings[EXTENSION_ID].chatStates = ctx.extensionSettings[EXTENSION_ID].chatStates || {};
+      ctx.extensionSettings[EXTENSION_ID].chatStates[chatId] = {
+        gameState: orchestrator.stateManager.toDict(),
+        summaryStore: orchestrator.summaryStore.toDict(),
+      };
+    }
 
     if (ctx.extensionSettings[EXTENSION_ID].summaryStore) {
       delete ctx.extensionSettings[EXTENSION_ID].summaryStore;

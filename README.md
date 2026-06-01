@@ -56,7 +56,8 @@ SillyTavern 扩展，通过多个**上下文隔离**的 Agent 将 LLM 从「直�
 - **轻量化默认**：无 planning 工具时自动切换为合并输出模式，比默认模式减少 1 次 API 请求
 - 历史消息压缩：自动压缩每轮对话的正文部分，提供summary作为主要的上下文存在形式
 - **原文召回**：规划 Agent 可声明需要参考的历史轮次，插件从对话中提取对应轮次正文原文注入写作 Agent，启用后强制分离规划与写作 Agent
-- **对话级状态隔离**：每个对话独立维护游戏状态和摘要，切换对话自动保存/恢复
+- **对话级状态隔离**：每个对话独立维护游戏状态和摘要，切换对话自动保存/恢复，删除聊天时自动清理残留数据（settings.json 中 chatStates + localStorage 中 checkpoints）
+- **JS-Slash-Runner 渲染兼容**：Pipeline 完成后手动发射 `MESSAGE_EDITED`、`MESSAGE_UPDATED`、`CHARACTER_MESSAGE_RENDERED` 事件，确保 JS-Slash-Runner 等依赖事件系统的插件能正确检测到消息内容变更
 - **LLM 调用次数透明**：默认 3 次（有 planning 工具时），无工具时自动降至 2 次，post\_pipeline 工具按需额外增加
 
 ***
@@ -133,7 +134,7 @@ GENERATION_ENDED — 执行完整 Pipeline
   │
   ├─ Post-pipeline 工具 ──→ llmToolOutputs（对用户可见）
   │
-  └─ 整合输出 ──→ 写入 chat[] → SillyTavern 前端渲染
+  └─ 整合输出 ──→ 写入 chat[] ──→ 发射 MESSAGE_EDITED / MESSAGE_UPDATED ──→ SillyTavern 前端渲染
 ```
 
 ### 配置参数全览
@@ -578,14 +579,14 @@ MERGED_WRITING_SYSTEM_SUFFIX             ← 内置合并写作指令
 
 #### 理论缓存命中率
 
-历史消息部分的 token 级缓存命中率 H = 1 − (2(n+m)-1) / ((2n+m)(m+1))
+历史消息部分的 token 级缓存命中率 H = 1 − (2(2(n+m)-1)) / ((2n+m)(m+1))
 
 **默认配置下的命中率**：
 
 | Agent | n | m | 窗口范围   | 缓存命中率  |
 | ----- | - | - | ------ | ------ |
-| 规划    | 4 | 4 | 4\~8 轮 | 无意义    |
-| 写作    | 3 | 4 | 3\~7 轮 | ≈74.0% |
+| 规划    | 4 | 5 | 4\~9 轮 | 无意义    |
+| 写作    | 3 | 6 | 3\~9 轮 | ≈60% |
 
 #### 设计考量
 

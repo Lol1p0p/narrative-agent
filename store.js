@@ -3,33 +3,6 @@ import { STORAGE_PREFIX } from "./constants.js";
 export class FileManager {
   constructor(conversationId) { this.basePath = `conversations/${conversationId}`; }
 
-  async save(turnId, category, data) {
-    const dir = `${this.basePath}/${category}`;
-    const ext = (category === "narratives" || category === "summaries") ? ".txt" : ".json";
-    const filename = `${turnId}${ext}`;
-    const content = ext === ".txt" ? String(data) : JSON.stringify(data, null, 2);
-    this._ensureCapacity(content.length);
-    const key = `${STORAGE_PREFIX}${dir}/${filename}`;
-    try {
-      localStorage.setItem(key, content);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "QuotaExceededError") {
-        console.warn("[FileManager] localStorage quota exceeded, pruning...");
-        this._pruneOldest(50);
-        localStorage.setItem(key, content);
-      } else { throw err; }
-    }
-  }
-
-  async load(turnId, category) {
-    const dir = `${this.basePath}/${category}`;
-    const ext = (category === "narratives" || category === "summaries") ? ".txt" : ".json";
-    const key = `${STORAGE_PREFIX}${dir}/${turnId}${ext}`;
-    const content = localStorage.getItem(key);
-    if (!content) return null;
-    return ext === ".txt" ? content : JSON.parse(content);
-  }
-
   saveCheckpoint(turnId, stateDict, summaryDict, mvuData = null) {
     const key = `${STORAGE_PREFIX}${this.basePath}/checkpoints/${turnId}.json`;
     const data = JSON.stringify({ state: stateDict, summary: summaryDict, mvuData });
@@ -38,7 +11,7 @@ export class FileManager {
     } catch (err) {
       if (err instanceof DOMException && err.name === "QuotaExceededError") {
         console.warn("[FileManager] localStorage quota exceeded, pruning...");
-        this._pruneOldest(50);
+        this._pruneOldest(20);
         localStorage.setItem(key, data);
       } else { throw err; }
     }
@@ -66,57 +39,44 @@ export class FileManager {
     for (const key of keysToDelete) localStorage.removeItem(key);
   }
 
-  deleteTurnFiles(turnId) {
-    const cats = ["plans", "narratives", "events", "state"];
-    for (const cat of cats) {
-      const ext = (cat === "narratives") ? ".txt" : ".json";
-      const key = `${STORAGE_PREFIX}${this.basePath}/${cat}/${turnId}${ext}`;
-      localStorage.removeItem(key);
-    }
-  }
-
   async exportConversation() {
-    const data = {};
-    const cats = ["plans", "narratives", "events", "summaries", "state"];
-    for (const cat of cats) {
-      data[cat] = {};
-      const prefix = `${STORAGE_PREFIX}${this.basePath}/${cat}/`;
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(prefix)) {
-          const filename = key.replace(prefix, "");
-          const content = localStorage.getItem(key);
-          data[cat][filename] = filename.endsWith(".txt") ? content : JSON.parse(content || "null");
-        }
+    const data = { checkpoints: {} };
+    const prefix = `${STORAGE_PREFIX}${this.basePath}/checkpoints/`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        const filename = key.replace(prefix, "");
+        const content = localStorage.getItem(key);
+        data.checkpoints[filename] = content ? JSON.parse(content) : null;
       }
     }
     return data;
   }
 
+  static cleanupChat(chatId) {
+    if (!chatId) return;
+    const prefix = `${STORAGE_PREFIX}conversations/${chatId}/checkpoints/`;
+    const keysToDelete = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) keysToDelete.push(key);
+    }
+    for (const key of keysToDelete) localStorage.removeItem(key);
+    console.log(`[FileManager] 清理已删除聊天的 checkpoints: ${chatId}, 删除 ${keysToDelete.length} 个快照`);
+  }
+
   _pruneOldest(count) {
-    const prefix = `${STORAGE_PREFIX}${this.basePath}/`;
+    const prefix = `${STORAGE_PREFIX}${this.basePath}/checkpoints/`;
     const keys = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith(prefix)) keys.push(key);
     }
-    const catPriority = { summaries: 0, state: 1, plans: 2, events: 3, narratives: 4 };
-    keys.sort((a, b) => {
-      const catA = a.replace(prefix, "").split("/")[0] || "";
-      const catB = b.replace(prefix, "").split("/")[0] || "";
-      return (catPriority[catB] ?? 9) - (catPriority[catA] ?? 9);
-    });
-    for (let i = 0; i < Math.min(count, keys.length); i++) localStorage.removeItem(keys[i]);
-  }
-
-  _ensureCapacity(neededBytes) {
-    let used = 0;
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k) used += (localStorage.getItem(k) || "").length * 2;
-    }
-    if (used + neededBytes * 2 > 4 * 1024 * 1024) {
-      console.warn(`[FileManager] localStorage near capacity: ~${(used / 1024 / 1024).toFixed(1)}MB used`);
+    keys.sort((a, b) => a.localeCompare(b));
+    for (let i = 0; i < Math.min(count, keys.length); i++) {
+      const removed = keys[i].replace(prefix, "");
+      console.log(`[FileManager] pruned checkpoint: ${removed}`);
+      localStorage.removeItem(keys[i]);
     }
   }
 }

@@ -143,7 +143,7 @@ export class Orchestrator {
     this._isRunning = false;
     this._shouldCancel = false;
     this.presetContext = null;
-    this._chatTurnHistory = [];
+    this._turnHistory = [];
     this._progressCb = null;
     this.contextRouter = new ContextRouter(deps);
     this.toolExecutor = new ToolExecutor();
@@ -154,16 +154,16 @@ export class Orchestrator {
   }
 
   applyChatExtractedContext(turns) {
-    this._chatTurnHistory = turns || [];
+    this._turnHistory = turns || [];
     this.turnCounter = turns.filter(t => t.turnNum > 0).length;
     const turn0 = turns.find(t => t.turnNum === 0);
     console.log(`[NA:applyContext] 接收 turns 数量: ${turns.length}, turnCounter=${this.turnCounter}, turn0存在=${!!turn0}, turn0.narrativeText长度=${turn0 ? turn0.narrativeText.length : "N/A"}`);
   }
 
   _getOpeningNarrative() {
-    const entry = this._chatTurnHistory.find(t => t.turnNum === 0);
+    const entry = this._turnHistory.find(t => t.turnNum === 0);
     const result = entry ? entry.narrativeText : "";
-    console.log(`[NA:getOpening] _chatTurnHistory长度=${this._chatTurnHistory.length}, turn0存在=${!!entry}, 返回值长度=${result.length}${result ? ", 预览: " + result.substring(0, 80) : ""}`);
+    console.log(`[NA:getOpening] _turnHistory长度=${this._turnHistory.length}, turn0存在=${!!entry}, 返回值长度=${result.length}${result ? ", 预览: " + result.substring(0, 80) : ""}`);
     return result;
   }
 
@@ -175,7 +175,7 @@ export class Orchestrator {
   }
 
   async _analyzeTurn0() {
-    const turn0 = this._chatTurnHistory.find(t => t.turnNum === 0);
+    const turn0 = this._turnHistory.find(t => t.turnNum === 0);
     if (!turn0 || !turn0.narrativeText) return;
 
     console.log("[NarrativeAgent] 检测到首轮前叙事上下文(turn0)，执行合并分析...");
@@ -190,8 +190,6 @@ export class Orchestrator {
       const merged = await runMergedAnalysisAgent(ctx);
       this._cancelCheck();
       this.stateManager.applyEvents(merged.events);
-      await this.fileManager.save(turnId, "events", merged);
-      await this.fileManager.save(turnId, "state", this.stateManager.toDict());
 
       if (merged.summary_entries.length > 0) {
         this.summaryStore.appendEntries(merged.summary_entries);
@@ -233,11 +231,10 @@ export class Orchestrator {
       this._mvuInitialized = true;
     }
 
-    if (!isRegeneration && this.turnCounter === 0 && this._chatTurnHistory.length > 0 && this._chatTurnHistory[0].turnNum === 0) {
+    if (!isRegeneration && this.turnCounter === 0 && this._turnHistory.length > 0 && this._turnHistory[0].turnNum === 0) {
       await this._analyzeTurn0();
     }
 
-    const historyLenBefore = this._chatTurnHistory.length;
     try {
       const result = await this._fullPipeline(userInput, turnId);
       if (!isRegeneration) this.turnCounter++;
@@ -254,10 +251,6 @@ export class Orchestrator {
       console.error("[NarrativeAgent] Pipeline error:", error);
       if (isApiFailure(error)) {
         this._reportProgress("API请求失败，尝试降级处理...");
-      }
-      if (this._chatTurnHistory.length > historyLenBefore) {
-        console.warn("[NarrativeAgent] Rolling back turnHistory from failed pipeline (length:", this._chatTurnHistory.length, "->", historyLenBefore, ")");
-        this._chatTurnHistory = this._chatTurnHistory.slice(0, historyLenBefore);
       }
       const result = await this._fallbackPipeline(userInput, turnId);
       if (!isRegeneration) this.turnCounter++;
@@ -322,7 +315,6 @@ export class Orchestrator {
       stateSummary, this.presetContext, planningTools
     );
     const writingGuide = await runPlanningAgent(planningCtx);
-    await this.fileManager.save(turnId, "plans", writingGuide);
     this._cancelCheck();
 
     const codeToolResults = [];
@@ -400,10 +392,7 @@ export class Orchestrator {
       textRecallEntries
     );
     const narrativeText = await runWritingAgent(writingCtx);
-    await this.fileManager.save(turnId, "narratives", narrativeText);
     this._cancelCheck();
-
-    this._chatTurnHistory.push({ userInput, narrativeText, turnNum: this.turnCounter + 1 });
 
     this._reportProgress("正在总结整理...");
     const { independent, dependent } = this._classifyPostPipelineTools(postPipelineTools);
@@ -432,8 +421,6 @@ export class Orchestrator {
       merged = analysisResult;
 
       applicationResult = this.stateManager.applyEvents(merged.events);
-      await this.fileManager.save(turnId, "events", merged);
-      await this.fileManager.save(turnId, "state", this.stateManager.toDict());
 
       if (merged.summary_entries.length > 0) {
         this.summaryStore.appendEntries(merged.summary_entries);
@@ -457,8 +444,6 @@ export class Orchestrator {
       }
 
       applicationResult = this.stateManager.applyEvents(merged.events);
-      await this.fileManager.save(turnId, "events", merged);
-      await this.fileManager.save(turnId, "state", this.stateManager.toDict());
 
       if (merged.summary_entries.length > 0) {
         this.summaryStore.appendEntries(merged.summary_entries);
@@ -542,7 +527,7 @@ export class Orchestrator {
 
     if (isPostPipeline && Array.isArray(tools) && tools.length > 0 && this._chat) {
       const currentTurn = parseInt(String(turnId).replace("turn_", ""), 10);
-      console.log(`[NA:tool_history] _buildAvailableContext: isPostPipeline=true, tools总数=${tools.length}, turnId=${turnId}, currentTurn=${currentTurn}, _chat长度=${this._chat.length}, _chatTurnHistory长度=${this._chatTurnHistory.length}`);
+      console.log(`[NA:tool_history] _buildAvailableContext: isPostPipeline=true, tools总数=${tools.length}, turnId=${turnId}, currentTurn=${currentTurn}, _chat长度=${this._chat.length}, _turnHistory长度=${this._turnHistory.length}`);
       if (!isNaN(currentTurn) && currentTurn > 0) {
         for (const tool of tools) {
           const tag = tool.outputTag;
@@ -781,8 +766,6 @@ export class Orchestrator {
 
       this._cancelCheck();
 
-      this._chatTurnHistory.push({ userInput, narrativeText, turnNum: this.turnCounter + 1 });
-
       this._cancelCheck();
 
       const analysisCtx = this.contextRouter.buildMergedAnalysisContext(narrativeText, userInput, turnId, this.stateManager.getSummary());
@@ -867,8 +850,6 @@ export class Orchestrator {
         : "",
     });
 
-    await this.fileManager.save(turnId, "narratives", narrativeText);
-
     this._cancelCheck();
 
     const mergedGuide = {
@@ -880,8 +861,6 @@ export class Orchestrator {
       tool_calls: [],
       scene_setting: "",
     };
-    await this.fileManager.save(turnId, "plans", mergedGuide);
-    this._chatTurnHistory.push({ userInput, narrativeText, turnNum: this.turnCounter + 1 });
 
     this._cancelCheck();
 
@@ -897,8 +876,6 @@ export class Orchestrator {
     }
 
     const applicationResult = this.stateManager.applyEvents(merged.events);
-    await this.fileManager.save(turnId, "events", merged);
-    await this.fileManager.save(turnId, "state", this.stateManager.toDict());
 
     if (merged.summary_entries.length > 0) {
       this.summaryStore.appendEntries(merged.summary_entries);
@@ -940,14 +917,14 @@ export class Orchestrator {
   }
 
   _getRecentTurns(count) {
-    const history = this._chatTurnHistory.filter(t => t.turnNum >= 0);
+    const history = this._turnHistory.filter(t => t.turnNum >= 0);
     if (history.length === 0) return [];
     const start = Math.max(0, history.length - count);
     return history.slice(start).map(t => ({ user: t.userInput || "", assistant: t.narrativeText, turnNum: t.turnNum }));
   }
 
   _getStableRecentTurns(n, m) {
-    const history = this._chatTurnHistory.filter(t => t.turnNum >= 0);
+    const history = this._turnHistory.filter(t => t.turnNum >= 0);
     if (history.length === 0) return [];
     const window = [];
     for (const turn of history) {
@@ -976,7 +953,7 @@ export class Orchestrator {
     }
 
     const turnMap = new Map();
-    for (const t of this._chatTurnHistory) {
+    for (const t of this._turnHistory) {
       if (t.chatIndex != null) {
         turnMap.set(t.turnNum, t.chatIndex);
       }
@@ -1033,7 +1010,7 @@ export class Orchestrator {
     if (!this._chat || !Array.isArray(this._chat)) return results;
 
     const turnMap = new Map();
-    for (const t of this._chatTurnHistory) {
+    for (const t of this._turnHistory) {
       if (t.chatIndex != null) {
         turnMap.set(t.turnNum, t.chatIndex);
       }
@@ -1146,7 +1123,7 @@ export class Orchestrator {
     if (prevTurnNum < 0) {
       this.stateManager.reset();
       this.summaryStore.reset();
-      this._chatTurnHistory = [];
+      this._turnHistory = [];
       try { await Mvu.replaceMvuData({ stat_data: {} }, { type: "chat" }); } catch (e) { console.warn("[NA] MVU reset failed:", e); }
       return;
     }
@@ -1155,13 +1132,13 @@ export class Orchestrator {
       if (turn0Checkpoint) {
         this.stateManager.reset(StateManager.fromDict(turn0Checkpoint.state).state);
         this.summaryStore.reset(SummaryStore.fromDict(turn0Checkpoint.summary));
-        this._chatTurnHistory = this._chatTurnHistory.filter(t => t.turnNum === 0);
+        this._turnHistory = this._turnHistory.filter(t => t.turnNum === 0);
         console.log("[NarrativeAgent] Rolled back to turn_000 checkpoint");
         return;
       }
       this.stateManager.reset();
       this.summaryStore.reset();
-      this._chatTurnHistory = [];
+      this._turnHistory = [];
       try { await Mvu.replaceMvuData({ stat_data: {} }, { type: "chat" }); } catch (e) { console.warn("[NA] MVU reset failed:", e); }
       return;
     }
@@ -1171,7 +1148,7 @@ export class Orchestrator {
       console.warn("[NarrativeAgent] No checkpoint found for", prevTurnId, ", performing full reset");
       this.stateManager.reset();
       this.summaryStore.reset();
-      this._chatTurnHistory = [];
+      this._turnHistory = [];
       try { await Mvu.replaceMvuData({ stat_data: {} }, { type: "chat" }); } catch (e) { console.warn("[NA] MVU reset failed:", e); }
       return;
     }
@@ -1185,8 +1162,7 @@ export class Orchestrator {
         console.warn("[NarrativeAgent] Failed to restore MVU data:", e);
       }
     }
-    this._chatTurnHistory = this._chatTurnHistory.filter(t => t.turnNum <= prevTurnNum);
-    console.log("[NarrativeAgent] Rolled back to checkpoint:", prevTurnId, ", turnHistory trimmed to", prevTurnNum);
+    console.log("[NarrativeAgent] Rolled back to checkpoint:", prevTurnId);
   }
 
   async rollbackToTurn(targetTurn) {
@@ -1220,7 +1196,7 @@ export class Orchestrator {
 
     this.turnCounter = targetTurn;
     this._mvuInitialized = targetTurn > 0;
-    this._chatTurnHistory = this._chatTurnHistory.filter(t => t.turnNum <= targetTurn);
+    this._turnHistory = this._turnHistory.filter(t => t.turnNum <= targetTurn);
 
     if (targetTurn > 0) {
       this.fileManager.deleteCheckpointsFrom(`turn_${String(targetTurn + 1).padStart(3, "0")}`);
@@ -1236,7 +1212,7 @@ export class Orchestrator {
     this.turnCounter = 0;
     this._mvuInitialized = false;
     this._isRunning = false;
-    this._chatTurnHistory = [];
+    this._turnHistory = [];
     this.presetContext = null;
     this.worldInfoResolver._entriesCache = null;
     this.worldInfoResolver._entriesCacheKey = null;

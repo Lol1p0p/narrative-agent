@@ -25,17 +25,19 @@ async function initExtension() {
   const worldInfoResolver = new WorldInfoResolver(stateManager, config.worldbookSource);
   const userPersonaReader = new UserPersonaReader();
 
-  if (config.state.autoSyncWorldInfo) await worldInfoResolver.syncToStateManager();
+  if (config.enabled && config.state.autoSyncWorldInfo) await worldInfoResolver.syncToStateManager();
 
   orchestrator = new Orchestrator({ stateManager, summaryStore, fileManager, characterReader, worldInfoResolver, userPersonaReader, config });
 
   bridge = new SillyTavernBridge(orchestrator);
   bridge.enabled = config.enabled;
   bridge.onPipelineComplete(() => { persistState(orchestrator, config, currentChatId); refreshStateDisplay(); });
-  await worldInfoResolver.buildFormattingSet();
+  if (config.enabled) await worldInfoResolver.buildFormattingSet();
   bridge.install();
 
   installChatChangeHandler();
+
+  installChatDeleteHandler();
 
   await registerSettingsPane();
   console.log("[NarrativeAgent] Initialization complete, enabled:", config.enabled);
@@ -46,6 +48,14 @@ function installChatChangeHandler() {
   if (!ctx) return;
   ctx.eventSource.on(ctx.eventTypes.CHAT_CHANGED, async () => {
     if (!orchestrator || !bridge) return;
+
+    const newChatId = getConversationId();
+
+    if (!config.enabled) {
+      currentChatId = newChatId;
+      console.log("[NarrativeAgent] Chat changed (disabled), updated chatId:", newChatId);
+      return;
+    }
 
     bridge._aborted = true;
 
@@ -68,7 +78,6 @@ function installChatChangeHandler() {
     console.log("[NarrativeAgent] Chat changed, saving current state for:", currentChatId);
     persistState(orchestrator, config, currentChatId);
 
-    const newChatId = getConversationId();
     const newStateManager = loadOrCreateState(newChatId);
     const newSummaryStore = loadOrCreateSummary(newChatId);
     const newFileManager = new FileManager(newChatId);
@@ -78,6 +87,24 @@ function installChatChangeHandler() {
     currentChatId = newChatId;
     refreshStateDisplay();
     console.log("[NarrativeAgent] Chat switch complete, new chatId:", newChatId);
+  });
+}
+
+function installChatDeleteHandler() {
+  const ctx = getSTContext();
+  if (!ctx) return;
+
+  ctx.eventSource.on(ctx.eventTypes.CHAT_DELETED, (chatFileName) => {
+    const ext = ctx.extensionSettings?.[EXTENSION_ID];
+    if (ext?.chatStates) {
+      delete ext.chatStates[chatFileName];
+      if (typeof ctx.saveSettingsDebounced === "function") {
+        ctx.saveSettingsDebounced();
+      }
+    }
+
+    FileManager.cleanupChat(chatFileName);
+    console.log(`[NarrativeAgent] 清理已删除聊天数据: ${chatFileName}`);
   });
 }
 
@@ -91,10 +118,29 @@ async function registerSettingsPane() {
 
     $html.find("#na_enabled").prop("checked", config.enabled);
     $html.find("#na_enabled").on("change", function () {
-      config.enabled = $(this).prop("checked");
+      const newEnabled = $(this).prop("checked");
+
+      if (config.enabled && !newEnabled) {
+        persistState(orchestrator, config, currentChatId);
+      }
+
+      config.enabled = newEnabled;
       if (bridge) bridge.enabled = config.enabled;
       saveConfig(config);
-      persistState(orchestrator, config, currentChatId);
+
+      if (config.enabled) {
+        const chatId = getConversationId();
+        const stateManager = loadOrCreateState(chatId);
+        const summaryStore = loadOrCreateSummary(chatId);
+        const fileManager = new FileManager(chatId);
+        orchestrator.switchToChat(stateManager, summaryStore, fileManager);
+        currentChatId = chatId;
+        (async () => {
+          if (config.state.autoSyncWorldInfo) await orchestrator.worldInfoResolver.syncToStateManager();
+          await orchestrator.worldInfoResolver.buildFormattingSet();
+        })().catch(e => console.warn("[NA] 启用时初始化失败:", e.message));
+      }
+
       refreshStateDisplay($html);
     });
 

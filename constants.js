@@ -7,9 +7,9 @@ export const DEFAULT_CONFIG = {
   worldbookSource: "auto",
   pipeline: {
     recentTurnsForPlanning: 4,
-    planningGrowthMargin: 4,
+    planningGrowthMargin: 5,
     recentTurnsForWriting: 3,
-    writingGrowthMargin: 4,
+    writingGrowthMargin: 6,
     parallelExecutionEnabled: false,
     enableTextRecall: false,
   },
