@@ -52,9 +52,9 @@ SillyTavern 扩展，通过多个**上下文隔离**的 Agent 将 LLM 从「直�
 - **确定性状态管理**：默认提供确定性状态管理工具，LLM 只建议状态变更（10 种事件类型），代码层负责校验和写入，杜绝幻觉篡改；可通过声明MVU相关条目无缝替代
 - **可扩展工具系统**：世界书作者可通过在世界书中添加 `[TOOL:name]` 条目定义 Planning 阶段工具和 Post-Pipeline 工具，无需修改插件代码；支持内置 `roll_dice` 与自定义 `code` 工具（JavaScript 计算逻辑）
 - **世界书条目分类注入**：条目根据 position（`4=atDepth` / `0=before_char` / `1=after_char`）和激活策略（永久 / 关键词）自动路由到对应 Agent 的正确 message 位置，作者无需关心 Agent 内部结构
-- **分段稳定前缀缓存**：对话历史窗口采用 n+m 分段生长策略，理想情况下历史对话部分的 token 级缓存命中率达 \~74%，显著降低 API 使用成本
+- **分段稳定前缀缓存**：对话历史窗口采用 n+m 分段生长策略，理想情况下历史对话部分的 token 级缓存命中率达 \~60%，显著降低 API 使用成本
 - **轻量化默认**：无 planning 工具时自动切换为合并输出模式，比默认模式减少 1 次 API 请求
-- 历史消息压缩：自动压缩每轮对话的正文部分，提供summary作为主要的上下文存在形式
+- **历史消息压缩**：自动压缩每轮对话的正文部分，提供summary作为主要的上下文存在形式
 - **原文召回**：规划 Agent 可声明需要参考的历史轮次，插件从对话中提取对应轮次正文原文注入写作 Agent，启用后强制分离规划与写作 Agent
 - **对话级状态隔离**：每个对话独立维护游戏状态和摘要，切换对话自动保存/恢复，删除聊天时自动清理残留数据（settings.json 中 chatStates + localStorage 中 checkpoints）
 - **JS-Slash-Runner 渲染兼容**：Pipeline 完成后手动发射 `MESSAGE_EDITED`、`MESSAGE_UPDATED`、`CHARACTER_MESSAGE_RENDERED` 事件，确保 JS-Slash-Runner 等依赖事件系统的插件能正确检测到消息内容变更
