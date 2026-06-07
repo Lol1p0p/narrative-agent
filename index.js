@@ -113,13 +113,7 @@ async function registerSettingsPane() {
     const ctx = getSTContext();
     if (!ctx?.renderExtensionTemplateAsync) { console.warn("[NarrativeAgent] renderExtensionTemplateAsync not available"); return; }
 
-    let html;
-    try {
-      html = await ctx.renderExtensionTemplateAsync("narrative-agent", "settings");
-    } catch {
-      console.log("[NarrativeAgent] 标准路径加载失败，尝试 third-party 路径...");
-      html = await ctx.renderExtensionTemplateAsync("third-party/narrative-agent", "settings");
-    }
+    const html = await ctx.renderExtensionTemplateAsync("third-party/narrative-agent", "settings");
     const $html = $(html);
 
     $html.find("#na_enabled").prop("checked", config.enabled);
