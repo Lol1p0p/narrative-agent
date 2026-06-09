@@ -3,7 +3,7 @@ export const EXTENSION_ID = "narrative-agent";
 
 export const DEFAULT_CONFIG = {
   enabled: true,
-  presetMode: "none",
+  presetMode: "split",
   worldbookSource: "auto",
   pipeline: {
     recentTurnsForPlanning: 4,

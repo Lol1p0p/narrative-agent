@@ -248,6 +248,10 @@ async function registerSettingsPane() {
       toastr.info("数据已导出");
     });
 
+    $html.find("#na_open_tutorial").on("click", function () {
+      window.open("/scripts/extensions/third-party/narrative-agent/TUTORIAL.html", "_blank");
+    });
+
     $("#extensions_settings").append($html);
     refreshStateDisplay($html);
   } catch (err) { console.error("[NarrativeAgent] Failed to register settings pane:", err); }
