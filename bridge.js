@@ -56,6 +56,7 @@ export class SillyTavernBridge {
 
     console.log("[NarrativeAgent] MESSAGE_DELETED, newChatLength:", newChatLength,
       "turnCounter:", this.orchestrator.turnCounter, "— relay模式下聊天结构已变更，部分删除不触发回退");
+    this.orchestrator.invalidatePrefetch();
   }
 
   _onPromptReady(data) {
@@ -152,6 +153,8 @@ export class SillyTavernBridge {
 
       if (typeof ctx.saveChat === "function") await ctx.saveChat();
       console.log("[NarrativeAgent] Pipeline 执行完成, 输出长度:", result.finalOutput.length);
+
+      await this.orchestrator.prefetchState();
 
       ctx.eventSource.emit(ctx.eventTypes.MESSAGE_EDITED, chat.length - 1);
       ctx.eventSource.emit(ctx.eventTypes.MESSAGE_UPDATED, chat.length - 1);

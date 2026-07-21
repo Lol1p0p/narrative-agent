@@ -147,6 +147,8 @@ export class Orchestrator {
     this._progressCb = null;
     this.contextRouter = new ContextRouter(deps);
     this.toolExecutor = new ToolExecutor();
+    this._prefetchedStateSummary = null;
+    this._prefetchedMvuData = null;
   }
 
   setPresetContext(ctx) {
@@ -261,6 +263,9 @@ export class Orchestrator {
   }
 
   async _getStateSummary() {
+    if (this._prefetchedStateSummary) {
+      return this._prefetchedStateSummary;
+    }
     if (typeof Mvu !== "undefined") {
       try {
         const mvuData = await Mvu.getMvuData({ type: "message", message_id: "latest" });
@@ -273,6 +278,30 @@ export class Orchestrator {
       }
     }
     return this.stateManager.getSummary();
+  }
+
+  async prefetchState() {
+    if (typeof Mvu === "undefined") return;
+    try {
+      const mvuData = await Mvu.getMvuData({ type: "message", message_id: "latest" });
+      this._prefetchedMvuData = mvuData;
+      this._prefetchedStateSummary = null;
+      if (mvuData && mvuData.stat_data) {
+        const summary = getMvuStateSummary(mvuData);
+        if (summary && summary !== "（无 MVU 数据）" && summary !== "（空状态）") {
+          this._prefetchedStateSummary = summary;
+        }
+      }
+      console.log("[NarrativeAgent] Prefetched state summary, hasData:", !!this._prefetchedStateSummary);
+    } catch (e) {
+      console.warn("[NarrativeAgent] Prefetch state failed:", e.message);
+    }
+  }
+
+  invalidatePrefetch() {
+    this._prefetchedStateSummary = null;
+    this._prefetchedMvuData = null;
+    console.log("[NarrativeAgent] Prefetch cache invalidated");
   }
 
   async _fullPipeline(userInput, turnId) {
@@ -617,7 +646,10 @@ export class Orchestrator {
         if (patches && patches.length > 0) {
           console.log("[NarrativeAgent] MVU patches extracted:", patches.length);
           try {
-            const mvuData = await Mvu.getMvuData({ type: "message", message_id: "latest" });
+            let mvuData = this._prefetchedMvuData;
+            if (!mvuData) {
+              mvuData = await Mvu.getMvuData({ type: "message", message_id: "latest" });
+            }
             const statData = mvuData?.stat_data || {};
             this._applyPatches(statData, patches);
             await Mvu.replaceMvuData({ stat_data: statData, initialized_lorebooks: mvuData?.initialized_lorebooks || {} }, { type: "message", message_id: "latest" });
@@ -1119,6 +1151,7 @@ export class Orchestrator {
   }
 
   async _rollbackToCheckpoint(turnId) {
+    this.invalidatePrefetch();
     const prevTurnNum = parseInt(String(turnId).replace("turn_", ""), 10) - 1;
     if (prevTurnNum < 0) {
       this.stateManager.reset();
@@ -1197,6 +1230,7 @@ export class Orchestrator {
     this.turnCounter = targetTurn;
     this._mvuInitialized = targetTurn > 0;
     this._turnHistory = this._turnHistory.filter(t => t.turnNum <= targetTurn);
+    this.invalidatePrefetch();
 
     if (targetTurn > 0) {
       this.fileManager.deleteCheckpointsFrom(`turn_${String(targetTurn + 1).padStart(3, "0")}`);
@@ -1217,6 +1251,7 @@ export class Orchestrator {
     this.worldInfoResolver._entriesCache = null;
     this.worldInfoResolver._entriesCacheKey = null;
     this.worldInfoResolver._formattingContentSet = null;
+    this.invalidatePrefetch();
     this.contextRouter = new ContextRouter({
       stateManager,
       summaryStore,
