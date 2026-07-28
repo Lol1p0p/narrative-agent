@@ -246,9 +246,10 @@ export class Orchestrator {
       const cancelled = error.message === "Pipeline cancelled" || this._shouldCancel;
       this._shouldCancel = false;
       if (cancelled) {
-        console.log("[NarrativeAgent] Pipeline cancelled by chat switch");
-        this._reportProgress("工作流已终止");
-        return { narrative: "", formatted: null, events: { applied: 0, rejected: 0 }, writingGuide: {}, finalOutput: "", codeToolResults: [] };
+        console.log("[NarrativeAgent] Pipeline cancelled by user");
+        this._reportProgress("⚠️ 生成已中断");
+        await this._rollbackToCheckpoint(turnId);
+        return { narrative: "⚠️ 生成已中断", formatted: null, events: { applied: 0, rejected: 0 }, writingGuide: {}, finalOutput: "⚠️ 生成已中断", codeToolResults: [] };
       }
       console.error("[NarrativeAgent] Pipeline error:", error);
       if (isApiFailure(error)) {

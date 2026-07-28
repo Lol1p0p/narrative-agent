@@ -23,6 +23,7 @@ export async function callLLM(messages, options) {
       return text;
     } catch (err) {
       lastErr = err;
+      if (isAbortError(err)) throw new Error("Pipeline cancelled");
       if (!isRetryable(err)) break;
     }
   }
@@ -37,6 +38,11 @@ export function extractText(result) {
     if (result.message?.content) return result.message.content;
   }
   return String(result || "");
+}
+
+export function isAbortError(err) {
+  const msg = (err && err.message) || "";
+  return msg.includes("abort") || msg.includes("Abort") || msg.includes("Cancelled by stop");
 }
 
 export function isRetryable(err) {

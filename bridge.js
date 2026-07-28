@@ -12,6 +12,7 @@ export class SillyTavernBridge {
     this._savedUserInput = null;
     this._generationCompleted = true;
     this._pipelineCompleteCbs = [];
+    this._stopEventHandler = null;
     this._boundOnPromptReady = this._onPromptReady.bind(this);
     this._boundOnGenerationEnded = this._onGenerationEnded.bind(this);
     this._boundOnGenerationStarted = this._onGenerationStarted.bind(this);
@@ -118,6 +119,15 @@ export class SillyTavernBridge {
 
     this.isPipelineRunning = true;
 
+    // 切换 UI 到"生成中"状态：显示停止按钮，禁用发送路径
+    $('#send_but').prop('disabled', true).css('pointer-events', 'none');
+    $('#option_regenerate, #option_continue, #mes_continue, #mes_impersonate')
+      .prop('disabled', true).css('pointer-events', 'none');
+    $('#mes_stop').css('display', 'flex');
+    document.body.dataset.generating = 'true';
+    this._stopEventHandler = () => { this.orchestrator._shouldCancel = true; };
+    ctx.eventSource.on(ctx.eventTypes.GENERATION_STOPPED, this._stopEventHandler);
+
     const chat = ctx.chat;
     const isRegeneration = this._generationType === "swipe" || this._generationType === "regenerate";
     this._generationType = null;
@@ -176,6 +186,14 @@ export class SillyTavernBridge {
       try { ctx.eventSource.emit(ctx.eventTypes.MESSAGE_EDITED, chat.length - 1); } catch {}
       try { ctx.eventSource.emit(ctx.eventTypes.MESSAGE_UPDATED, chat.length - 1); } catch {}
     } finally {
+      // 恢复 UI 到正常状态
+      ctx.eventSource.removeListener(ctx.eventTypes.GENERATION_STOPPED, this._stopEventHandler);
+      this._stopEventHandler = null;
+      $('#send_but').prop('disabled', false).css('pointer-events', '');
+      $('#option_regenerate, #option_continue, #mes_continue, #mes_impersonate')
+        .prop('disabled', false).css('pointer-events', '');
+      $('#mes_stop').css('display', 'none');
+      delete document.body.dataset.generating;
       this.isPipelineRunning = false;
     }
   }
