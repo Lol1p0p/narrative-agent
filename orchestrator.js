@@ -740,6 +740,30 @@ export class Orchestrator {
     }
   }
 
+  /**
+   * 在 chat 历史消息楼层中查找已有 MVU 数据。
+   * relay 机制下 pipeline 运行时 message_id "latest" 指向本轮新建的空占位符消息，
+   * 仅读 latest 会误判"无数据"并在重启/切换 chat 后用 [initvar] 覆盖已有变量。
+   * 用负数深度索引遍历历史楼层（-1 最新、-2 上一条……），任一楼层存在 stat_data 即视为已初始化。
+   */
+  async _findExistingMvuData() {
+    if (typeof Mvu === "undefined") return null;
+    const MAX_DEPTH = 20;
+    for (let depth = -1; depth >= -MAX_DEPTH; depth--) {
+      try {
+        const data = await Mvu.getMvuData({ type: "message", message_id: depth });
+        if (data && data.stat_data && Object.keys(data.stat_data).length > 0) {
+          console.log(`[NarrativeAgent] 楼层深度 ${depth} 发现已有 MVU 数据，跳过[initvar]初始化`);
+          return data;
+        }
+      } catch (e) {
+        // 深度越界或楼层无消息，无需继续回溯
+        break;
+      }
+    }
+    return null;
+  }
+
   async _initMvuFromWorldbook() {
     if (typeof Mvu === "undefined") return;
     try {
@@ -756,13 +780,12 @@ export class Orchestrator {
         }
         console.log("[NarrativeAgent] [initvar] parsed from text format, keys:", Object.keys(initData).join(", "));
       }
-      const current = await Mvu.getMvuData({ type: "message", message_id: "latest" });
-      const existing = current?.stat_data || {};
-      if (Object.keys(existing).length > 0) {
+      const existingData = await this._findExistingMvuData();
+      if (existingData) {
         console.log("[NarrativeAgent] MVU已有数据，跳过[initvar]初始化");
         return;
       }
-      await Mvu.replaceMvuData({ stat_data: initData, initialized_lorebooks: current?.initialized_lorebooks || {} }, { type: "message", message_id: "latest" });
+      await Mvu.replaceMvuData({ stat_data: initData, initialized_lorebooks: existingData?.initialized_lorebooks || {} }, { type: "message", message_id: "latest" });
       console.log("[NarrativeAgent] MVU initialized from [initvar]:", Object.keys(initData).join(", "));
     } catch (e) {
       console.warn("[NarrativeAgent] [initvar] MVU initialization failed:", e);
